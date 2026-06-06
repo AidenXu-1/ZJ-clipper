@@ -1,0 +1,255 @@
+# Development Guide
+
+这份文档给想继续开发兆基clipper的人和本地 Agent 使用。读完它，应该能快速理解项目边界、目录职责、常见坑和新增站点适配器的方法。
+
+## 项目定位
+
+兆基clipper 是一个 Chrome / Edge MV3 浏览器扩展，把网页内容提取为 Markdown，并保存到用户自己的 Obsidian 仓库。
+
+核心原则是 **capture-only**：
+
+- 做精准抓取、Markdown 转换、预览编辑、保存落地。
+- 不做 AI 摘要、总结、语义改写、智能分类、看图起名。
+- 语义整理交给 Obsidian 里的下游工作流或 Agent。
+
+开发时优先维护这个边界。不要为了方便把 AI 服务、云端依赖或隐式上传能力加进扩展。
+
+## Agent 接手提示词
+
+如果你要让 Codex、Claude Code 或其它本地 Agent 继续开发，可以复制这段：
+
+```text
+请先阅读 README.md 和 DEVELOPMENT.md，理解兆基clipper 的 capture-only 边界、WXT/React 架构、站点适配器注册表和构建检查要求。
+
+开发原则：
+- 不要加入 AI 摘要、云端上传或自动语义分类。
+- 新增平台优先新建 utils/extractors/<platform>.ts，并在 utils/extractors/index.ts 注册。
+- 平台特异 DOM 选择器留在各自适配器里，不要过度抽象。
+- 抓取不准时先加诊断或根据用户提供的诊断结果修，不要盲猜。
+- 改完至少运行 npm run compile、npm run build，并检查 content.js 是否纯 ASCII。
+
+请先给我说明你读到的架构和准备修改的文件，再开始动代码。
+```
+
+## 技术栈
+
+- WXT：MV3 扩展框架，负责 manifest、多入口、Vite 构建。
+- React + TypeScript：弹窗和设置页。
+- Defuddle：正文提取，通用网页兜底。
+- Turndown + GFM：HTML 转 Obsidian Markdown。
+- Obsidian 保存通道：`obsidian://` URI 或 Obsidian Local REST API。
+
+## 目录职责
+
+```text
+wxt.config.ts
+  Manifest、权限、快捷键、图标、esbuild charset: ascii。
+
+entrypoints/background.ts
+  后台 service worker。
+  负责右键菜单、快捷键、打开 obsidian://、跨域带登录态下载图片。
+
+entrypoints/content.ts
+  内容脚本壳层。
+  负责消息监听、网页高亮、诊断信息、blob 图片就地解析。
+  正文提取委托给 utils/extractors 注册表。
+
+entrypoints/popup/
+  剪藏弹窗 React UI。
+  负责提取请求、预览编辑、属性面板、标签、完整抓取、保存、诊断按钮。
+
+entrypoints/options/
+  设置页 React UI。
+  负责保存方式、REST 配置、主题、归档命名、本地图片、自定义 frontmatter 字段等设置。
+
+utils/extractors/
+  站点适配器。
+  每个平台一个文件，index.ts 统一注册和分发。
+
+utils/extract-core.ts
+  抓取共享层。
+  包括 Defuddle 封装、Turndown 规则、Markdown 清洗、滚动抓取、日期/计数/标签解析等。
+
+utils/storage.ts
+  chrome.storage 设置读写和标签历史。
+
+utils/frontmatter.ts
+  frontmatter 生成和 YAML 标量转义。
+
+utils/obsidian.ts
+  obsidian://new 和 obsidian://open URI 构造。
+
+utils/rest.ts
+  Obsidian Local REST API 写入、连接测试、文件存在检查、二进制附件写入。
+
+utils/images.ts
+  本地图片保存流水线。
+
+utils/messaging.ts
+  内容脚本消息发送与按需注入重试。
+
+utils/highlighter.ts
+  网页划词高亮、持久化和恢复。
+```
+
+## 开发命令
+
+```bash
+npm install
+npm run dev
+npm run dev:edge
+npm run compile
+npm run build
+npm run build:edge
+npm run zip
+npm run zip:edge
+```
+
+开发时常用：
+
+```bash
+npm run compile
+npm run build
+python3 -c "d=open('.output/chrome-mv3/content-scripts/content.js','rb').read();print([b for b in d if b>=0x80][:1])"
+```
+
+最后一条输出 `[]` 表示 `content.js` 为纯 ASCII。
+
+## 新增站点适配器
+
+优先保持“平台物理隔离”：
+
+1. 新建 `utils/extractors/<platform>.ts`。
+2. 实现 `SiteExtractor`：
+   - `name`
+   - `match(ctx)`
+   - `extract(ctx)`
+3. 在 `utils/extractors/index.ts` 的 `REGISTRY` 中注册，放在 `genericExtractor` 前。
+4. 只有稳定通用的逻辑才放进 `extract-core.ts`。
+5. 平台特有选择器、接口、DOM 规则留在对应适配器里。
+
+适配器返回 `ExtractedPage`。如果 URL 命中但解析失败，可以返回 `null`，让后续适配器或通用兜底继续处理。
+
+## 抓取调试原则
+
+不要盲猜页面结构。
+
+当某个平台抓取不准时，优先：
+
+1. 让用户在弹窗点击诊断按钮。
+2. 收集诊断输出：当前 URL、命中的适配器、页面结构、候选容器、实际 Markdown。
+3. 先加厚诊断探针，再根据真实 DOM 修适配器。
+
+对于虚拟滚动、Web Components、沉浸式翻译、登录态图片、blob 图片等场景，通用正文提取经常不够，需要站点适配器直读稳定 DOM 或页面内联状态。
+
+## 关键技术注意事项
+
+### 内容脚本必须保持 ASCII
+
+`wxt.config.ts` 设置了：
+
+```ts
+esbuild: { charset: 'ascii' }
+```
+
+但正则字面量里的非 ASCII 字符不会被自动转义。写会进入 content script 的代码时：
+
+- 字符串里可以有中文。
+- 正则字面量里不要直接写中文、全角符号或零宽字符。
+- 用字符串 `includes/indexOf` 或 `\uXXXX` 转义。
+
+构建后必须检查：
+
+```bash
+python3 -c "d=open('.output/chrome-mv3/content-scripts/content.js','rb').read();print([b for b in d if b>=0x80][:1])"
+```
+
+### Obsidian iframe 链接
+
+Obsidian 是 `app://` 环境，视频 iframe 或嵌入链接不要使用协议相对地址 `//example.com`，应显式转成 `https://example.com`。
+
+### 内容脚本隔离世界
+
+内容脚本不能直接读页面 JS 变量，比如 `window.__INITIAL_STATE__`。需要从 DOM 的 `<script>` 文本中解析。
+
+### Local REST API
+
+REST 模式依赖用户本机 Obsidian 的 Local REST API 插件。
+
+- 默认地址：`http://127.0.0.1:27123`
+- API Key 保存在浏览器扩展存储中。
+- 用户可能把 `Bearer xxx` 整行粘贴进来，`utils/rest.ts` 会自动去掉多余前缀。
+
+### frontmatter
+
+用户可编辑标题和描述，可能输入换行、冒号、引号等字符。写 YAML 时必须通过 `yamlScalar` 转义，避免破坏 frontmatter。
+
+## 权限说明
+
+扩展 manifest 使用：
+
+- `activeTab`
+- `scripting`
+- `storage`
+- `contextMenus`
+- `host_permissions: <all_urls>`
+
+`<all_urls>` 是为了在用户主动剪藏任意网页时读取页面内容、下载图片和执行站点适配器。它会让浏览器显示较高权限提示。新增权限时要谨慎，并在 README 或隐私说明中解释用途。
+
+## 测试清单
+
+改动后至少检查：
+
+```bash
+npm run compile
+npm run build
+python3 -c "d=open('.output/chrome-mv3/content-scripts/content.js','rb').read();print([b for b in d if b>=0x80][:1])"
+```
+
+建议手动验证：
+
+- 普通网页能打开弹窗并生成 Markdown。
+- Chrome 构建能在 `chrome://extensions` 加载。
+- Edge 构建能在 `edge://extensions` 加载。
+- `obsidian://` 保存能调起 Obsidian。
+- REST 模式连接测试、保存、图片落地正常。
+- 改了权限后，需要移除扩展再重新加载，单纯刷新扩展不一定授予新权限。
+
+## 发布
+
+源码仓库不提交生成物：
+
+- `node_modules/`
+- `.output/`
+- `.wxt/`
+- zip 构建包
+
+发布流程：
+
+```bash
+npm run compile
+npm run build
+npm run build:edge
+npm run zip
+npm run zip:edge
+```
+
+把生成的 zip 上传到 GitHub Release：
+
+- `zhaoji-clipper-<version>-chrome.zip`
+- `zhaoji-clipper-<version>-edge.zip`
+
+## 当前开放方向
+
+- 知乎适配器。
+- 微博、Medium 等更多平台适配器。
+- 追加到 Daily Note。
+- 自定义 frontmatter 字段模板变量。
+- Firefox 实测。
+- 长尾页面抓取精度优化。
+
+明确不建议加入：
+
+- AI 摘要、总结、改写。
+- 远程内容上传。
+- 抖音等需要音频转写才能得到正文语义的平台。

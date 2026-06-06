@@ -1,0 +1,576 @@
+:root {
+  --bg: #ffffff;
+  --surface: #fcfcfd;
+  --surface-hover: #f1f2f5;
+  --fg: #1f2328;
+  --muted: #6b7280;
+  --border: #e3e6ea;
+  --border-soft: #eef0f3;
+  --accent: #ed7d1c;
+  --accent-fg: #ffffff;
+  --accent-soft: #fff4e8;
+  --accent-soft-hover: #ffe9d4;
+  --warn-bg: #fff7ed;
+  --warn-fg: #9a5b00;
+  --hl-bg: #fffbe6;
+  --hl-border: #f4e4a8;
+  --hl-fg: #8a6d00;
+}
+
+/* 深色变量：跟随系统(auto，除非手动选了浅色) 或 手动选深色 */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --bg: #1e1e1e;
+    --surface: #262626;
+    --surface-hover: #2f3133;
+    --fg: #dcddde;
+    --muted: #9aa0a6;
+    --border: #3a3c3f;
+    --border-soft: #333538;
+    --accent: #f08a30;
+    --accent-fg: #1a1a1a;
+    --accent-soft: #38291a;
+    --accent-soft-hover: #46331f;
+    --warn-bg: #3a2a14;
+    --warn-fg: #e3a763;
+    --hl-bg: #36320f;
+    --hl-border: #54501f;
+    --hl-fg: #d8c878;
+  }
+}
+:root[data-theme='dark'] {
+  --bg: #1e1e1e;
+  --surface: #262626;
+  --surface-hover: #2f3133;
+  --fg: #dcddde;
+  --muted: #9aa0a6;
+  --border: #3a3c3f;
+  --border-soft: #333538;
+  --accent: #f08a30;
+  --accent-fg: #1a1a1a;
+  --accent-soft: #38291a;
+  --accent-soft-hover: #46331f;
+  --warn-bg: #3a2a14;
+  --warn-fg: #e3a763;
+  --hl-bg: #36320f;
+  --hl-border: #54501f;
+  --hl-fg: #d8c878;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 13px;
+}
+
+.zc-wrap {
+  width: 420px;
+  padding: 12px 14px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* 头部 */
+.zc-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.zc-logo-img {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+  display: block;
+}
+.zc-logo {
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--accent);
+  letter-spacing: 1px;
+}
+.zc-words {
+  font-size: 12px;
+}
+.zc-muted {
+  color: var(--muted);
+}
+.zc-icon-btn {
+  margin-left: auto;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--muted);
+  padding: 4px 6px;
+  border-radius: 6px;
+}
+.zc-icon-btn:hover {
+  background: var(--surface-hover);
+  color: var(--fg);
+}
+
+/* 主标题（可编辑，自适应高度） */
+.zc-hero {
+  field-sizing: content;
+  resize: none;
+  overflow: hidden;
+  width: 100%;
+  border: none;
+  background: transparent;
+  outline: none;
+  font-family: inherit;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.32;
+  color: var(--fg);
+  padding: 2px 2px;
+  margin: 0;
+  min-height: 1.32em;
+  border-radius: 6px;
+}
+.zc-hero:hover {
+  background: var(--surface-hover);
+}
+.zc-hero:focus {
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+.zc-hero::placeholder {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+/* 分区小标题 */
+.zc-sectionlabel {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  color: var(--muted);
+  text-transform: uppercase;
+  margin: 2px 0 -2px 2px;
+}
+
+/* 属性面板（仿 Obsidian） */
+.zc-props {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--surface);
+}
+.zc-prop {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--border-soft);
+}
+.zc-prop:last-child {
+  border-bottom: none;
+}
+.zc-prop-top {
+  align-items: flex-start;
+}
+.zc-prop-icon {
+  width: 16px;
+  text-align: center;
+  font-size: 12px;
+  opacity: 0.65;
+  flex: none;
+}
+.zc-prop-key {
+  width: 78px;
+  flex: none;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.zc-prop-val {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid transparent;
+  background: transparent;
+  border-radius: 5px;
+  padding: 3px 6px;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--fg);
+  outline: none;
+}
+.zc-prop-val:hover {
+  background: var(--surface-hover);
+}
+.zc-prop-val:focus {
+  background: var(--bg);
+  border-color: var(--accent);
+}
+.zc-prop-val.zc-ro {
+  color: var(--muted);
+  cursor: default;
+}
+.zc-prop-val.zc-ro:hover {
+  background: transparent;
+}
+.zc-prop-ta {
+  resize: vertical;
+  line-height: 1.45;
+  max-height: 120px;
+}
+.zc-prop-top .zc-prop-key {
+  margin-top: 4px;
+}
+
+/* 标签编辑器（chip 式） */
+.zc-tagbox {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 3px 4px;
+}
+.zc-taglist {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+}
+.zc-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  border: 1px solid var(--accent-soft-hover);
+  border-radius: 6px;
+  padding: 1px 3px 1px 8px;
+  font-size: 11.5px;
+  line-height: 1.7;
+}
+.zc-tag-x {
+  border: none;
+  background: transparent;
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 9px;
+  padding: 0 2px;
+  opacity: 0.65;
+  line-height: 1;
+}
+.zc-tag-x:hover {
+  opacity: 1;
+}
+.zc-tag-input {
+  flex: 1;
+  min-width: 90px;
+  border: none;
+  background: transparent;
+  outline: none;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--fg);
+  padding: 2px;
+}
+.zc-tag-input::placeholder {
+  color: var(--muted);
+}
+.zc-tagrecent {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+.zc-tagrecent-label {
+  font-size: 10.5px;
+  color: var(--muted);
+  margin-right: 1px;
+}
+
+/* 常用标签 chips：建议态 = 虚线灰底，区别于已选标签（实心橙） */
+.zc-chip {
+  border: 1px dashed var(--border);
+  background: transparent;
+  color: var(--muted);
+  border-radius: 6px;
+  padding: 1px 7px;
+  font-size: 11px;
+  cursor: pointer;
+  line-height: 1.7;
+}
+.zc-chip:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  border-style: solid;
+}
+
+/* 正文区 */
+.zc-section {
+  font-weight: 600;
+  color: var(--fg);
+  font-size: 13px;
+}
+.zc-row {
+  display: flex;
+  align-items: center;
+}
+.zc-between {
+  justify-content: space-between;
+}
+.zc-toggle {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  overflow: hidden;
+}
+.zc-toggle button {
+  border: none;
+  background: var(--bg);
+  padding: 3px 9px;
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--muted);
+}
+.zc-toggle button.on {
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+
+.zc-fullcap {
+  border: 1px dashed var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-radius: 8px;
+  padding: 7px;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.zc-fullcap:hover {
+  background: var(--accent-soft-hover);
+}
+.zc-fullcap:disabled {
+  opacity: 0.7;
+  cursor: default;
+}
+.zc-caphint {
+  font-size: 11.5px;
+  text-align: center;
+}
+
+.zc-label {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+.zc-input {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 9px;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--fg);
+  outline: none;
+  background: var(--bg);
+}
+.zc-input:focus {
+  border-color: var(--accent);
+}
+.zc-textarea {
+  resize: vertical;
+  line-height: 1.6;
+  font-family: inherit;
+  font-size: 13px;
+  min-height: 160px;
+  max-height: 360px;
+}
+
+/* 高亮条 */
+.zc-hlbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--hl-bg);
+  border: 1px solid var(--hl-border);
+  border-radius: 8px;
+  padding: 6px 9px;
+  font-size: 12px;
+  color: var(--hl-fg);
+}
+.zc-hlbar span {
+  flex: 1;
+}
+.zc-hlbtn {
+  border: none;
+  background: var(--accent);
+  color: var(--accent-fg);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.zc-hlbtn-ghost {
+  background: transparent;
+  color: var(--muted);
+  text-decoration: underline;
+  padding: 4px 4px;
+}
+
+.zc-grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+/* 保存位置（可折叠） */
+.zc-dest {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+.zc-dest > summary {
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 8px 10px;
+  font-size: 12px;
+}
+.zc-dest > summary::-webkit-details-marker {
+  display: none;
+}
+.zc-dest-icon {
+  opacity: 0.7;
+  flex: none;
+  margin-top: 1px;
+}
+.zc-dest-path {
+  flex: 1;
+  min-width: 0;
+  color: var(--fg);
+  word-break: break-all;
+  line-height: 1.45;
+}
+.zc-dest-edit {
+  flex: none;
+  color: var(--accent);
+  white-space: nowrap;
+}
+.zc-dest[open] .zc-dest-edit {
+  color: var(--muted);
+}
+.zc-dest-body {
+  padding: 0 10px 10px;
+  border-top: 1px solid var(--border-soft);
+}
+.zc-fieldhint {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 4px;
+  line-height: 1.4;
+}
+
+/* 警告 / 提示 / 保存 */
+.zc-warn {
+  background: var(--warn-bg);
+  color: var(--warn-fg);
+  border-radius: 7px;
+  padding: 6px 9px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.zc-savedmsg {
+  font-size: 12px;
+  color: var(--accent);
+  text-align: center;
+}
+.zc-save {
+  margin-top: 4px;
+  border: none;
+  background: var(--accent);
+  color: var(--accent-fg);
+  border-radius: 9px;
+  padding: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.zc-save:hover {
+  opacity: 0.92;
+}
+.zc-save:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.zc-saveddone {
+  display: flex;
+  gap: 8px;
+}
+.zc-saveddone .zc-save {
+  flex: 1;
+}
+.zc-save-ghost {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--border);
+}
+.zc-save-ghost:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.zc-diaglink {
+  margin-top: 4px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11.5px;
+  cursor: pointer;
+  text-decoration: underline;
+  align-self: center;
+}
+.zc-diaglink:hover {
+  color: var(--accent);
+}
+
+/* 加载 / 错误 */
+.zc-center {
+  align-items: center;
+  justify-content: center;
+  min-height: 180px;
+  gap: 12px;
+  text-align: center;
+}
+.zc-error {
+  color: #e5484d;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.zc-link {
+  border: none;
+  background: transparent;
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 13px;
+  text-decoration: underline;
+}
+.zc-spinner {
+  width: 26px;
+  height: 26px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: zc-spin 0.8s linear infinite;
+}
+@keyframes zc-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

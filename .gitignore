@@ -1,0 +1,18 @@
+# 依赖
+node_modules/
+
+# WXT 构建产物与缓存
+.output/
+.wxt/
+stats.html
+*.zip
+
+# 日志
+*.log
+npm-debug.log*
+
+# 系统/编辑器
+.DS_Store
+.idea/
+.vscode/
+*.swp

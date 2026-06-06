@@ -1,0 +1,226 @@
+:root {
+  --accent: #ed7d1c;
+  --border: #e3e6ea;
+  --muted: #6b7280;
+  --fg: #1f2328;
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --input-bg: #ffffff;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --accent: #f08a30;
+    --border: #3a3c3f;
+    --muted: #9aa0a6;
+    --fg: #dcddde;
+    --bg: #191919;
+    --surface: #242424;
+    --input-bg: #1e1e1e;
+  }
+}
+:root[data-theme='dark'] {
+  --accent: #f08a30;
+  --border: #3a3c3f;
+  --muted: #9aa0a6;
+  --fg: #dcddde;
+  --bg: #191919;
+  --surface: #242424;
+  --input-bg: #1e1e1e;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+  color: var(--fg);
+  background: var(--bg);
+}
+
+.zc-opt {
+  max-width: 600px;
+  margin: 0 auto;
+  padding: 24px 16px 84px;
+}
+
+.zc-opt-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 2px 16px;
+}
+.zc-opt-logo {
+  width: 26px;
+  height: 26px;
+  object-fit: contain;
+}
+.zc-opt h1 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--fg);
+}
+
+/* 分组卡片 */
+.zc-group {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-bottom: 12px;
+}
+.zc-group-title {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  color: var(--accent);
+  margin-bottom: 10px;
+}
+.zc-radios {
+  display: flex;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+.zc-radios .zc-check {
+  margin: 0;
+}
+.zc-mt {
+  margin-top: 14px;
+}
+
+.zc-l {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  margin: 10px 0 6px;
+}
+
+.zc-i {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 9px 11px;
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+  background: var(--input-bg);
+  color: var(--fg);
+}
+.zc-i:focus {
+  border-color: var(--accent);
+}
+
+.zc-hint {
+  margin: 5px 0 0;
+  font-size: 11.5px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+/* 自定义字段 */
+.zc-cf-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.zc-cf-key {
+  flex: 0 0 34%;
+}
+.zc-cf-val {
+  flex: 1;
+}
+.zc-cf-del {
+  flex: none;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  border-radius: 8px;
+  width: 32px;
+  height: 32px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.zc-cf-del:hover {
+  color: #e5484d;
+  border-color: #e5484d;
+}
+.zc-cf-add {
+  border: 1px dashed var(--border);
+  background: transparent;
+  color: var(--accent);
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 12.5px;
+  cursor: pointer;
+  margin-top: 2px;
+}
+.zc-cf-add:hover {
+  border-color: var(--accent);
+}
+
+/* 吸底保存栏 */
+.zc-sticky-save {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 0;
+  margin-top: 4px;
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+  z-index: 5;
+}
+
+.zc-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  cursor: pointer;
+  margin: 4px 0;
+}
+
+.zc-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 16px;
+  margin-top: 6px;
+}
+
+.zc-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 8px;
+}
+
+.zc-btn {
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  border-radius: 9px;
+  padding: 10px 22px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.zc-btn:hover {
+  opacity: 0.92;
+}
+
+.zc-ok {
+  color: var(--accent);
+  font-size: 13px;
+}
+
+.zc-btn-ghost {
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  padding: 7px 16px;
+}
