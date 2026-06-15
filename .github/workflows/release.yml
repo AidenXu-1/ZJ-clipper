@@ -1,0 +1,71 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Verify tag matches package version
+        shell: bash
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          PACKAGE_VERSION="$(node -p "require('./package.json').version")"
+          if [[ "$TAG_VERSION" != "$PACKAGE_VERSION" ]]; then
+            echo "Tag version $TAG_VERSION does not match package.json $PACKAGE_VERSION"
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npm run compile
+
+      - name: Build release archives
+        run: |
+          npm run zip
+          npm run zip:edge
+
+      - name: Verify content script is ASCII
+        run: |
+          node -e "const fs=require('fs');const p='.output/chrome-mv3/content-scripts/content.js';const b=fs.readFileSync(p);if([...b].some(x=>x>127)){console.error('content.js contains non-ASCII bytes');process.exit(1)}"
+
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          NOTES_FILE="RELEASE_NOTES_${GITHUB_REF_NAME}.md"
+          ASSETS=(
+            ".output/zhaoji-clipper-${GITHUB_REF_NAME#v}-chrome.zip"
+            ".output/zhaoji-clipper-${GITHUB_REF_NAME#v}-edge.zip"
+          )
+
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "${ASSETS[@]}" --clobber
+          elif [[ -f "$NOTES_FILE" ]]; then
+            gh release create "$GITHUB_REF_NAME" "${ASSETS[@]}" \
+              --title "兆基clipper ${GITHUB_REF_NAME#v}" \
+              --notes-file "$NOTES_FILE"
+          else
+            gh release create "$GITHUB_REF_NAME" "${ASSETS[@]}" \
+              --title "兆基clipper ${GITHUB_REF_NAME#v}" \
+              --generate-notes
+          fi

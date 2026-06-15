@@ -38,8 +38,8 @@
 
 到 [Releases](https://github.com/AidenXu-1/ZJ-clipper/releases) 下载对应浏览器的 zip：
 
-- Chrome：`zhaoji-clipper-0.1.0-chrome.zip`
-- Edge：`zhaoji-clipper-0.1.0-edge.zip`
+- Chrome：最新 Release 中的 `zhaoji-clipper-*-chrome.zip`
+- Edge：最新 Release 中的 `zhaoji-clipper-*-edge.zip`
 
 下载后先解压 zip，再把解压后的文件夹加载到浏览器。
 
@@ -145,6 +145,8 @@ python3 -c "d=open('.output/chrome-mv3/content-scripts/content.js','rb').read();
 ```
 
 最后一条输出 `[]` 表示内容脚本产物为纯 ASCII，避免 Chrome 在大体积中文内容脚本上出现编码拒载。
+
+版本开发和发布统一通过短期分支、Pull Request、版本标签和 GitHub Release 完成，具体步骤见 [`DEVELOPMENT.md`](./DEVELOPMENT.md#版本管理与发布)。
 
 ## 使用
 

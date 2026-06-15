@@ -115,6 +115,66 @@ python3 -c "d=open('.output/chrome-mv3/content-scripts/content.js','rb').read();
 
 最后一条输出 `[]` 表示 `content.js` 为纯 ASCII。
 
+## 版本管理与发布
+
+仓库保持精简，只使用：
+
+- `main`：始终对应最新稳定源码。
+- 短期分支：每项功能或修复一个分支，合并后删除。
+- Pull Request：所有进入 `main` 的改动都经过 CI。
+- Git Tag + GitHub Release：永久保存每个正式版本及 Chrome / Edge 安装包。
+
+### 开发流程
+
+```bash
+git switch main
+git pull --ff-only
+git switch -c feature/简短功能名
+```
+
+完成修改后运行：
+
+```bash
+npm run compile
+npm run build
+npm run build:edge
+```
+
+然后提交、推送分支并创建 Pull Request。CI 会再次执行类型检查、双浏览器构建和内容脚本 ASCII 检查。CI 通过后再合并到 `main`。
+
+### 版本号规则
+
+使用语义化版本：
+
+- Patch，例如 `2.0.1`：修复问题，不新增主要能力。
+- Minor，例如 `2.1.0`：新增向后兼容的功能或平台适配。
+- Major，例如 `3.0.0`：存在不兼容变化或整体大改版。
+
+不要覆盖或移动已经发布的标签，也不要删除旧 Release。旧版本依靠对应标签和 Release 永久保留。
+
+### 发布流程
+
+1. 在发布 PR 中更新 `package.json`、`package-lock.json`、`CHANGELOG.md`。
+2. 可选新增 `RELEASE_NOTES_vX.Y.Z.md`，用于自定义该版本 Release 说明。
+3. PR 合并且 `main` 的 CI 通过后，在本地同步 `main`。
+4. 创建并推送与版本号一致的标签：
+
+```bash
+git switch main
+git pull --ff-only
+git tag -a vX.Y.Z -m "兆基clipper X.Y.Z"
+git push origin vX.Y.Z
+```
+
+推送标签后，`.github/workflows/release.yml` 会自动：
+
+- 校验 Tag 与 `package.json` 版本一致。
+- 执行类型检查。
+- 构建 Chrome / Edge 安装包。
+- 创建 GitHub Release，或更新同标签 Release 的安装包。
+
+日常开发不要直接向 `main` 推送，也不需要维护长期 `develop` 分支。
+
 ## 新增站点适配器
 
 优先保持“平台物理隔离”：
