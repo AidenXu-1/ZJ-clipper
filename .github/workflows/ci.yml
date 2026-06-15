@@ -29,6 +29,9 @@ jobs:
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high
 
+      - name: Reject critical development vulnerabilities
+        run: npm audit --audit-level=critical
+
       - name: Type check
         run: npm run compile
 

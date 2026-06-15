@@ -12,6 +12,7 @@
 
 - GitHub Actions 固定到官方发布提交 SHA。
 - CI 增加生产依赖安全审计。
+- 修复可兼容升级的间接开发依赖，critical 漏洞降为 0。
 - 增加 Dependabot、安全报告说明和敏感文件忽略规则。
 - 已扫描完整 Git 历史、公开 Release 安装包、PR 和 Issue，未发现真实 API Key、Token、私钥或本机路径泄露。
 
