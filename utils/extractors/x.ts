@@ -1,11 +1,19 @@
-// 兆基clipper —— X/Twitter 推文提取器（单条 + 整串 thread）
-//  X 是 React SPA，通用 Defuddle 会带进评论/杂质。直接读 tweet 的 data-testid 结构。
+// 兆基clipper —— X/Twitter 提取器（单条推文 + 整串 thread + Article 长文）
+//  普通推文直读 tweet data-testid；Article 使用独立富文本容器与 Defuddle 专用提取器。
 //  反爬不构成障碍（读已渲染 DOM，不打签名 API）。视频是 blob 流，无法下载，用官方公开嵌入。
 //  整串：仅在用户点「完整抓取」(ctx.fullCapture) 时触发，滚动收集「围绕焦点、连续同作者」的块。
 //   边界按视觉序（出现顺序）而非 id/时间序——外人秒回的评论 id 可能插进自串中间，但视觉上排在串后。
 // 注：本模块会被打进 content.js，受 ASCII 约束 —— 中文只可出现在字符串里，禁止进正则字面量。
 import { ClipStats, ExtractedPage } from '@/utils/types';
-import { ExtractContext, SiteExtractor, sleep } from '@/utils/extract-core';
+import {
+  ExtractContext,
+  SiteExtractor,
+  cleanMarkdown,
+  htmlToMarkdown,
+  parseWithSelector,
+  sleep,
+  stripZeroWidth,
+} from '@/utils/extract-core';
 
 /** 读推文正文，剥掉沉浸式翻译等插件注入的译文节点，只留原文 */
 function cleanTweetText(el: Element | null): string {
@@ -109,6 +117,101 @@ function extractTweetData(tw: Element): TweetData {
   return { id, handle, userName, published, text, imgs, card, isVideo, stats };
 }
 
+/** 用 URL 的 status id 锁定主推文；找不到时退回页面第一条。 */
+function findFocusedTweet(): Element | null {
+  const tweets = document.querySelectorAll('article[data-testid="tweet"]');
+  if (!tweets.length) return null;
+  const focusedId = (location.pathname.match(/status\/(\d+)/) || [])[1] || '';
+  if (focusedId) {
+    for (const tweet of Array.from(tweets)) {
+      if (tweet.querySelector(`a[href*="/status/${focusedId}"]`)) return tweet;
+    }
+  }
+  return tweets[0] || null;
+}
+
+/** 只滚动 X Article 正文范围，正文底部进入视口后立即停止。 */
+async function scrollXArticleToEnd(container: HTMLElement): Promise<void> {
+  const origY = window.scrollY;
+  const top = Math.max(0, window.scrollY + container.getBoundingClientRect().top - 80);
+  window.scrollTo(0, top);
+  await sleep(300);
+
+  let lastY = -1;
+  for (let guard = 0; guard < 300; guard++) {
+    const rect = container.getBoundingClientRect();
+    if (rect.bottom <= window.innerHeight - 20) break;
+    const articleBottom = window.scrollY + rect.bottom;
+    const target = Math.min(articleBottom - window.innerHeight + 40, window.scrollY + window.innerHeight * 0.8);
+    window.scrollTo(0, Math.max(window.scrollY, target));
+    await sleep(220);
+    if (window.scrollY === lastY) break;
+    lastY = window.scrollY;
+  }
+
+  await sleep(250);
+  window.scrollTo(0, origY);
+}
+
+/** X Article 使用独立富文本 DOM，不在 tweetText 里。 */
+async function tryXArticle(ctx: ExtractContext): Promise<ExtractedPage | null> {
+  const articleContainer = document.querySelector<HTMLElement>(
+    '[data-testid="twitterArticleRichTextView"]',
+  );
+  if (!articleContainer) return null;
+
+  // 只滚动这一篇文章，用于触发正文图片懒加载；不进入回复区。
+  if (ctx.fullCapture) {
+    await scrollXArticleToEnd(articleContainer);
+  }
+
+  // Defuddle 0.18.1 内置 XArticleExtractor，会处理长文标题、段落、图片、代码块和嵌入推文。
+  const parsed = await parseWithSelector(ctx.url);
+  let contentMarkdown = cleanMarkdown(htmlToMarkdown(parsed.content || ''));
+  // Article videos are page-local blob streams. Without the official X API
+  // they cannot be embedded reliably outside X, so omit only the dead media.
+  if (/\]\(blob:https?:\/\/[^)]+\)/.test(contentMarkdown)) {
+    contentMarkdown = contentMarkdown.replace(
+      /\[[^\]]*\]\(blob:https?:\/\/[^)]+\)/g,
+      '',
+    );
+  }
+  contentMarkdown = cleanMarkdown(contentMarkdown);
+  if (!contentMarkdown) return null;
+
+  const mainTweet = findFocusedTweet();
+  const tweetData = mainTweet ? extractTweetData(mainTweet) : null;
+  const titleEl = document.querySelector('[data-testid="twitter-article-title"]');
+  const title = stripZeroWidth(
+    titleEl?.textContent || parsed.title || document.title || 'X 文章',
+  ).trim();
+  const description = stripZeroWidth(parsed.description || '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  return {
+    title: title || 'X 文章',
+    author: parsed.author || tweetData?.userName || '',
+    published: parsed.published || tweetData?.published || '',
+    description:
+      description ||
+      contentMarkdown
+        .replace(/[#>*_`\[\]()!-]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 120),
+    site: 'X (Article)',
+    domain: 'x.com',
+    url: ctx.url,
+    image: parsed.image || tweetData?.imgs[0] || '',
+    contentMarkdown,
+    selectionMarkdown: htmlToMarkdown(ctx.selectionHtml),
+    wordCount: parsed.wordCount || contentMarkdown.length,
+    highlights: ctx.highlights,
+    stats: tweetData?.stats,
+  };
+}
+
 /** 把一条推文渲染成 Markdown 块（正文 + 卡片 + 图片 + 视频嵌入） */
 function renderTweetBlock(d: TweetData): string {
   const parts: string[] = [];
@@ -181,20 +284,14 @@ async function collectThread(focusedId: string, focusedHandle: string): Promise<
 }
 
 async function tryX(ctx: ExtractContext): Promise<ExtractedPage | null> {
+  const article = await tryXArticle(ctx);
+  if (article) return article;
+
   const tweets = document.querySelectorAll('article[data-testid="tweet"]');
   if (!tweets.length) return null;
   // 用 URL 的 status id 锁定焦点推文（页面含主推+多条回复）
   const focusedId = (location.pathname.match(/status\/(\d+)/) || [])[1] || '';
-  let mainEl: Element | null = null;
-  if (focusedId) {
-    for (const t of Array.from(tweets)) {
-      if (t.querySelector(`a[href*="/status/${focusedId}"]`)) {
-        mainEl = t;
-        break;
-      }
-    }
-  }
-  if (!mainEl) mainEl = tweets[0];
+  const mainEl = findFocusedTweet();
   if (!mainEl) return null;
   const mainData = extractTweetData(mainEl);
 
@@ -235,7 +332,9 @@ export const xExtractor: SiteExtractor = {
   name: 'x',
   match: (ctx) =>
     /(^|\.)x\.com$|(^|\.)twitter\.com$/.test(ctx.hostname) &&
-    /\/status\/\d+/.test(ctx.url) &&
-    !!document.querySelector('article[data-testid="tweet"]'),
+    (/\/(status|article)\/\d+/.test(ctx.url) || /\/i\/article\/\d+/.test(ctx.url)) &&
+    !!document.querySelector(
+      'article[data-testid="tweet"], [data-testid="twitterArticleRichTextView"]',
+    ),
   extract: (ctx) => tryX(ctx),
 };

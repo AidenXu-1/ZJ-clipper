@@ -14,6 +14,7 @@ export async function loadSettings(): Promise<Settings> {
   return {
     ...DEFAULT_SETTINGS,
     ...stored,
+    siteTagRules: stored.siteTagRules ?? DEFAULT_SETTINGS.siteTagRules,
     frontmatterFields: {
       ...DEFAULT_SETTINGS.frontmatterFields,
       ...(stored.frontmatterFields ?? {}),

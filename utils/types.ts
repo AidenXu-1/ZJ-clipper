@@ -8,6 +8,8 @@ export interface ExtractedPage {
   author: string;
   /** 发布日期 ISO 字符串（可能为空） */
   published: string;
+  /** 最后修改日期 ISO 字符串（可能为空） */
+  modified?: string;
   /** 页面描述/摘要 */
   description: string;
   /** 站点名 */
@@ -52,6 +54,7 @@ export interface ClipProperties {
   source: string;
   author: string;
   published: string;
+  modified: string;
   description: string;
   clipped: string;
   tags: string[];
@@ -70,6 +73,12 @@ export type ThemeMode = 'auto' | 'light' | 'dark';
 export interface CustomField {
   key: string;
   value: string;
+}
+
+/** 按网站自动添加标签；domain 支持主域名及其全部子域名 */
+export interface SiteTagRule {
+  domain: string;
+  tag: string;
 }
 
 export interface Settings {
@@ -97,6 +106,12 @@ export interface Settings {
   filenameTemplate: string;
   /** 标签黑名单：抓到的页面标签若命中名单则丢弃（用户自定义，机械过滤，非 AI 判断） */
   tagBlocklist: string[];
+  /** 未勾选“本篇已学习”时自动添加的标签 */
+  unreadTag: string;
+  /** 勾选“本篇已学习”时替换成的标签 */
+  learnedTag: string;
+  /** 按网站域名自动添加标签 */
+  siteTagRules: SiteTagRule[];
   /** 是否写入 frontmatter 属性 */
   includeFrontmatter: boolean;
   /** 用户自定义字段（固定写入每篇笔记的 frontmatter） */
@@ -106,6 +121,7 @@ export interface Settings {
     source: boolean;
     author: boolean;
     published: boolean;
+    modified: boolean;
     description: boolean;
     clipped: boolean;
     tags: boolean;
@@ -125,12 +141,16 @@ export const DEFAULT_SETTINGS: Settings = {
   attachmentsFolder: 'attachments',
   filenameTemplate: '{{title}}',
   tagBlocklist: [],
+  unreadTag: 'unread',
+  learnedTag: '已学习',
+  siteTagRules: [{ domain: 'woshipm.com', tag: 'PM' }],
   includeFrontmatter: true,
   customFields: [],
   frontmatterFields: {
     source: true,
     author: true,
     published: true,
+    modified: true,
     description: true,
     clipped: true,
     tags: true,
@@ -156,6 +176,14 @@ export interface FetchImageRequest {
 }
 export type FetchImageResponse =
   | { ok: true; base64: string; mime: string }
+  | { ok: false; error: string };
+
+/** 截取当前活动标签页的可见区域（飞书画板等非 Markdown 内容用） */
+export interface CaptureVisibleTabRequest {
+  type: 'ZHAOJI_CLIPPER_CAPTURE_VISIBLE_TAB';
+}
+export type CaptureVisibleTabResponse =
+  | { ok: true; dataUrl: string }
   | { ok: false; error: string };
 
 /** 高亮相关消息 */

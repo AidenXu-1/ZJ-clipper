@@ -58,6 +58,26 @@ export function Options() {
     setS((prev) => ({ ...prev, customFields: prev.customFields.filter((_, j) => j !== i) }));
   }
 
+  function setSiteTagRule(i: number, patch: Partial<{ domain: string; tag: string }>) {
+    setS((prev) => {
+      const next = [...prev.siteTagRules];
+      next[i] = { ...next[i], ...patch };
+      return { ...prev, siteTagRules: next };
+    });
+  }
+  function addSiteTagRule() {
+    setS((prev) => ({
+      ...prev,
+      siteTagRules: [...prev.siteTagRules, { domain: '', tag: '' }],
+    }));
+  }
+  function removeSiteTagRule(i: number) {
+    setS((prev) => ({
+      ...prev,
+      siteTagRules: prev.siteTagRules.filter((_, j) => j !== i),
+    }));
+  }
+
   async function handleSave() {
     await saveSettings(s);
     setSavedMsg(T.settingsSaved);
@@ -241,6 +261,54 @@ export function Options() {
           }
         />
         <p className="zc-hint">{T.settingsTagBlockHint}</p>
+      </div>
+
+      <div className="zc-group">
+        <div className="zc-group-title">{T.settingsAutoTags}</div>
+        <div className="zc-two-cols">
+          <div>
+            <label className="zc-l">{T.settingsUnreadTag}</label>
+            <input
+              className="zc-i"
+              value={s.unreadTag}
+              onChange={(e) => update('unreadTag', e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="zc-l">{T.settingsLearnedTag}</label>
+            <input
+              className="zc-i"
+              value={s.learnedTag}
+              onChange={(e) => update('learnedTag', e.target.value)}
+            />
+          </div>
+        </div>
+        <p className="zc-hint">{T.settingsReadingTagHint}</p>
+
+        <label className="zc-l zc-mt">{T.settingsSiteTags}</label>
+        {s.siteTagRules.map((rule, i) => (
+          <div className="zc-cf-row" key={i}>
+            <input
+              className="zc-i zc-site-domain"
+              placeholder={T.siteDomain}
+              value={rule.domain}
+              onChange={(e) => setSiteTagRule(i, { domain: e.target.value })}
+            />
+            <input
+              className="zc-i zc-site-tag"
+              placeholder={T.siteTag}
+              value={rule.tag}
+              onChange={(e) => setSiteTagRule(i, { tag: e.target.value })}
+            />
+            <button className="zc-cf-del" title="删除" onClick={() => removeSiteTagRule(i)}>
+              ✕
+            </button>
+          </div>
+        ))}
+        <button className="zc-cf-add" onClick={addSiteTagRule}>
+          {T.addSiteRule}
+        </button>
+        <p className="zc-hint">{T.settingsSiteTagsHint}</p>
       </div>
 
       <div className="zc-group">

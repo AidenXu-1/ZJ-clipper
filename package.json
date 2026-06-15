@@ -2,7 +2,7 @@
   "name": "zhaoji-clipper",
   "displayName": "兆基clipper",
   "description": "兆基clipper —— 把网页内容简存到你的 Obsidian 仓库",
-  "version": "0.1.0",
+  "version": "2.0.0",
   "type": "module",
   "scripts": {
     "dev": "wxt",

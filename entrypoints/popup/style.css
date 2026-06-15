@@ -225,6 +225,23 @@ body {
 .zc-prop-top .zc-prop-key {
   margin-top: 4px;
 }
+.zc-learned {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  cursor: pointer;
+  color: var(--fg);
+}
+.zc-learned input {
+  accent-color: var(--accent);
+}
+.zc-learned span {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 11px;
+}
 
 /* 标签编辑器（chip 式） */
 .zc-tagbox {

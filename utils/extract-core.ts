@@ -36,6 +36,37 @@ turndown.remove((node) =>
   ['SCRIPT', 'STYLE', 'NOSCRIPT', 'SVG'].includes(node.nodeName),
 );
 
+// 网页内联高亮（飞书 mark/背景色文字等会先规整为 mark）→ Obsidian 高亮语法
+turndown.addRule('zhaojiClipperMark', {
+  filter: (node) => node.nodeName === 'MARK',
+  replacement: (content) => {
+    const text = content.trim();
+    return text ? `==${text}==` : '';
+  },
+});
+
+// 飞书 callout 规整后的专用标记，直接输出 Obsidian callout，避免 [!note] 被转义。
+turndown.addRule('zhaojiClipperCallout', {
+  filter: (node) =>
+    node.nodeName === 'BLOCKQUOTE' &&
+    (node as HTMLElement).getAttribute('data-obsidian-callout') === 'note',
+  replacement: (content) => {
+    const lines = content
+      .split('\n')
+      .map((line) =>
+        line.replace(/[\u00AD\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF]/g, '').trim(),
+      )
+      .filter((line) => !!line && !/^>(?:\s*>)*\s*$/.test(line));
+    // Feishu callouts render their leading emoji as a separate block. Keep it
+    // beside the first text line so Obsidian matches the original layout.
+    if (lines.length > 1 && /^\p{Extended_Pictographic}\uFE0F?$/u.test(lines[0])) {
+      lines.splice(0, 2, `${lines[0]} ${lines[1]}`);
+    }
+    const body = lines.map((line) => `> ${line}`).join('\n');
+    return `\n\n> [!note]${body ? `\n${body}` : ''}\n\n`;
+  },
+});
+
 // 站内锚点链接（#xxx，如飞书目录/标题）→ 纯文本；空链接 → 丢弃
 turndown.addRule('zhaojiClipperAnchors', {
   filter: (node) => node.nodeName === 'A',
@@ -345,7 +376,10 @@ function safeQuery(selector?: string): HTMLElement | null {
  * @param contentSelector Defuddle 选中的正文容器选择器；提供时只在该容器内
  *   收集内容块，从而排除目录/导航/侧栏等非正文区域。
  */
-export async function captureFullContent(contentSelector?: string): Promise<string> {
+export async function captureFullContent(
+  contentSelector?: string,
+  blockSelector?: string,
+): Promise<string> {
   const scroller = findScroller();
   // 收集范围限定到正文容器；但若容器过宽（body/html）或落到滚动容器之外，
   // 则退回整个滚动容器，避免把整页杂物都圈进来。
@@ -378,29 +412,53 @@ export async function captureFullContent(contentSelector?: string): Promise<stri
   const capture = () => {
     const base = getTop();
     // 仅在正文容器内收集（root 可能等于 scroller，即未定位到容器时的兜底）
-    const nodes = root.querySelectorAll<HTMLElement>(BLOCK_SELECTOR);
+    const nodeSelector = blockSelector || BLOCK_SELECTOR;
+    const nodes = root.querySelectorAll<HTMLElement>(nodeSelector);
     for (const el of Array.from(nodes)) {
       // 只保留叶子块，避免父子重复
-      if (el.querySelector(BLOCK_SELECTOR)) continue;
-      const text = (el.textContent || '').trim();
+      if (el.querySelector(nodeSelector)) continue;
+      let sourceEl = el;
+      if (blockSelector) {
+        let candidate: HTMLElement | null = el;
+        let parentBlock = candidate.parentElement?.closest<HTMLElement>('[data-block-id]') || null;
+        while (parentBlock && parentBlock !== root) {
+          if (parentBlock.getAttribute('data-block-type') === 'page') break;
+          candidate = parentBlock;
+          parentBlock = candidate.parentElement?.closest<HTMLElement>('[data-block-id]') || null;
+        }
+        sourceEl = candidate;
+      }
+
+      const text = (sourceEl.textContent || '').trim();
       // 媒体块（图片/视频/嵌入）即使无文字也要保留
       const media =
-        /^(IMG|IFRAME|VIDEO)$/.test(el.tagName)
-          ? el
-          : el.querySelector('img, iframe, video');
+        /^(IMG|IFRAME|VIDEO)$/.test(sourceEl.tagName)
+          ? sourceEl
+          : sourceEl.querySelector('img, iframe, video');
       if (!text && !media) continue;
       // 纯媒体块按地址去重；文本块按内容签名去重
+      const blockId = blockSelector
+        ? sourceEl.getAttribute('data-block-id') ||
+          sourceEl.getAttribute('data-record-id') ||
+          el.getAttribute('data-block-id') ||
+          el.getAttribute('data-record-id') ||
+          ''
+        : '';
       const key =
-        !text && media
-          ? `media:${media.getAttribute('src') || media.getAttribute('data-src') || el.outerHTML.slice(0, 120)}`
-          : `${el.tagName}:${text.slice(0, 160)}`;
-      const y = Math.round(base + el.getBoundingClientRect().top);
+        blockId || (!text && media
+          ? `media:${media.getAttribute('src') || media.getAttribute('data-src') || sourceEl.outerHTML.slice(0, 120)}`
+          : `${sourceEl.tagName}:${text.slice(0, 160)}`);
+      const y = Math.round(base + sourceEl.getBoundingClientRect().top);
+      let outerHTML = sourceEl.outerHTML;
+      if (blockSelector) {
+        outerHTML = sourceEl.outerHTML;
+      }
       const prev = blocks.get(key);
       if (!prev) {
-        blocks.set(key, { y, html: el.outerHTML });
-      } else if (el.outerHTML.length > prev.html.length) {
+        blocks.set(key, { y, html: outerHTML });
+      } else if (outerHTML.length > prev.html.length) {
         // 渲染更完整时更新
-        prev.html = el.outerHTML;
+        prev.html = outerHTML;
       }
     }
   };

@@ -62,8 +62,28 @@ export default defineBackground(() => {
         .catch((e) => sendResponse({ ok: false, error: String(e) }));
       return true;
     }
+    if (msg?.type === 'ZHAOJI_CLIPPER_CAPTURE_VISIBLE_TAB') {
+      captureVisibleTab(_sender.tab?.windowId)
+        .then((r) => sendResponse(r))
+        .catch((e) => sendResponse({ ok: false, error: String(e) }));
+      return true;
+    }
   });
 });
+
+async function captureVisibleTab(
+  windowId?: number,
+): Promise<{ ok: true; dataUrl: string } | { ok: false; error: string }> {
+  try {
+    const dataUrl =
+      windowId == null
+        ? await chrome.tabs.captureVisibleTab({ format: 'png' })
+        : await chrome.tabs.captureVisibleTab(windowId, { format: 'png' });
+    return dataUrl ? { ok: true, dataUrl } : { ok: false, error: '截图为空' };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}
 
 /** ArrayBuffer → base64（分块，避免大图爆栈） */
 function bufToBase64(buf: ArrayBuffer): string {

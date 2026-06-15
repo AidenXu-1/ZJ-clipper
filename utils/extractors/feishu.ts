@@ -1,7 +1,7 @@
 // 兆基clipper —— 飞书/Lark 文档专用提取器
 //  Defuddle 自动定位会选到 body（混入评论/点赞/导航），故强制指定正文容器并过滤噪声行。
 // 注：本模块会被打进 content.js，受 ASCII 约束 —— 中文只可出现在字符串/Set 中，禁止进正则字面量。
-import { ExtractedPage } from '@/utils/types';
+import { CaptureVisibleTabResponse, ExtractedPage } from '@/utils/types';
 import {
   ExtractContext,
   SiteExtractor,
@@ -34,6 +34,7 @@ const FEISHU_JUNK = new Set([
   '功能更新',
   '帮助中心',
   '效率指南',
+  '输入“/”快速插入内容',
 ]);
 
 function isFeishuJunk(t: string): boolean {
@@ -45,9 +46,289 @@ function isFeishuJunk(t: string): boolean {
   return false;
 }
 
+function feishuAuthor(): string {
+  const header = document.querySelector('.page-block-header');
+  if (!header) return '';
+  const name = header.querySelector(
+    [
+      '.doc-info-user-name',
+      '.doc-info-owner-name',
+      '.doc-info-group-user [class*="name"]',
+      '.doc-info-group-owner [class*="name"]',
+      '[class*="author-name"]',
+      '[class*="owner-name"]',
+    ].join(', '),
+  );
+  const text = stripZeroWidth(name?.textContent || '').replace(/\s+/g, ' ').trim();
+  if (text) return text;
+
+  for (const group of Array.from(header.querySelectorAll('.doc-info-group'))) {
+    if (group.classList.contains('doc-info-group-time')) continue;
+    const groupText = stripZeroWidth(group.textContent || '').replace(/\s+/g, ' ').trim();
+    if (
+      groupText &&
+      groupText.length <= 60 &&
+      !groupText.includes('修改') &&
+      !groupText.includes('更新')
+    ) {
+      return groupText;
+    }
+  }
+
+  const avatar = header.querySelector<HTMLElement>(
+    '.doc-info-group-user img, .doc-info-group-owner img, [class*="author"] img, [class*="owner"] img',
+  );
+  return stripZeroWidth(
+    avatar?.getAttribute('alt') ||
+      avatar?.getAttribute('title') ||
+      avatar?.getAttribute('aria-label') ||
+      '',
+  ).trim();
+}
+
+function feishuModified(title: string): string {
+  const raw = stripZeroWidth(
+    document.querySelector('.page-block-header .doc-info-time-item')?.textContent || '',
+  ).trim();
+  if (!raw || (!raw.includes('修改') && !raw.includes('更新'))) return '';
+
+  const full = raw.match(/(\d{4})\D{1,3}(\d{1,2})\D{1,3}(\d{1,2})/);
+  let year = full ? parseInt(full[1], 10) : 0;
+  let month = full ? parseInt(full[2], 10) : 0;
+  let day = full ? parseInt(full[3], 10) : 0;
+  if (!full) {
+    const short = raw.match(/(\d{1,2})\D{1,3}(\d{1,2})/);
+    if (!short) return '';
+    month = parseInt(short[1], 10);
+    day = parseInt(short[2], 10);
+    const titleYear = title.match(/(?:^|\D)(20\d{2})\d{4}(?:\D|$)/);
+    year = titleYear ? parseInt(titleYear[1], 10) : new Date().getFullYear();
+  }
+  if (month < 1 || month > 12 || day < 1 || day > 31) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${year}-${pad(month)}-${pad(day)}`;
+}
+
+/** 从飞书块属性/类名读出标准块类型。 */
+function feishuBlockKind(el: Element): string {
+  return (el.getAttribute('data-block-type') || '').toLowerCase();
+}
+
+function headingLevel(el: Element, kind: string): number {
+  const aria = parseInt(el.getAttribute('aria-level') || '', 10);
+  if (aria >= 1 && aria <= 9) return Math.min(aria, 6);
+
+  const m = kind.match(/^heading([1-9])$/);
+  return m ? Math.min(parseInt(m[1], 10), 6) : 0;
+}
+
+function meaningfulContent(el: Element): Element {
+  return (
+    el.querySelector('.ace-line') ||
+    el.querySelector('.text-content, .block-content') ||
+    el.querySelector('[data-contents="true"]') ||
+    el.querySelector('[contenteditable="true"]') ||
+    el
+  );
+}
+
+function replaceWithSemanticTag(el: Element, tag: string, preserveContainer = false): Element {
+  const out = el.ownerDocument.createElement(tag);
+  const source = preserveContainer ? el : meaningfulContent(el);
+  while (source.firstChild) out.appendChild(source.firstChild);
+  el.replaceWith(out);
+  return out;
+}
+
+interface FeishuBoardCapture {
+  recordId: string;
+  blockId: string;
+  index: number;
+  url: string;
+}
+
+function dataUrlImage(dataUrl: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('截图加载失败'));
+    img.src = dataUrl;
+  });
+}
+
+async function cropVisibleElement(el: HTMLElement): Promise<string | null> {
+  el.scrollIntoView({ block: 'center', inline: 'center' });
+  await new Promise((resolve) => setTimeout(resolve, 450));
+  const rect = el.getBoundingClientRect();
+  const left = Math.max(0, rect.left);
+  const top = Math.max(0, rect.top);
+  const right = Math.min(window.innerWidth, rect.right);
+  const bottom = Math.min(window.innerHeight, rect.bottom);
+  if (right - left < 40 || bottom - top < 40) return null;
+
+  const resp = (await chrome.runtime.sendMessage({
+    type: 'ZHAOJI_CLIPPER_CAPTURE_VISIBLE_TAB',
+  })) as CaptureVisibleTabResponse;
+  if (!resp?.ok) return null;
+
+  const screenshot = await dataUrlImage(resp.dataUrl);
+  const scaleX = screenshot.naturalWidth / window.innerWidth;
+  const scaleY = screenshot.naturalHeight / window.innerHeight;
+  const sx = Math.round(left * scaleX);
+  const sy = Math.round(top * scaleY);
+  const sw = Math.max(1, Math.round((right - left) * scaleX));
+  const sh = Math.max(1, Math.round((bottom - top) * scaleY));
+  const canvas = document.createElement('canvas');
+  canvas.width = sw;
+  canvas.height = sh;
+  const cx = canvas.getContext('2d');
+  if (!cx) return null;
+  cx.drawImage(screenshot, sx, sy, sw, sh, 0, 0, sw, sh);
+
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
+  return blob ? URL.createObjectURL(blob) : null;
+}
+
+/** 飞书画板无法转成 Markdown，将渲染结果裁剪为 PNG 并回填到原块位置。 */
+async function captureFeishuBoards(): Promise<FeishuBoardCapture[]> {
+  const origX = window.scrollX;
+  const origY = window.scrollY;
+  const out: FeishuBoardCapture[] = [];
+  const boards = Array.from(
+    document.querySelectorAll<HTMLElement>(
+      [
+        '.docx-page-block [data-block-type="whiteboard"]',
+        '.docx-page-block .docx-whiteboard-block',
+        '.docx-page-block [data-block-type="board"]',
+        '.docx-page-block .docx-board-block',
+      ].join(', '),
+    ),
+  );
+  for (const [index, board] of boards.slice(0, 12).entries()) {
+    const recordId = board.getAttribute('data-record-id') || '';
+    const blockId = board.getAttribute('data-block-id') || '';
+    const url = await cropVisibleElement(board).catch(() => null);
+    if (url) out.push({ recordId, blockId, index, url });
+  }
+  window.scrollTo(origX, origY);
+  return out;
+}
+
+/**
+ * 把飞书的视觉块 DOM 规整为语义 HTML，再交给 Turndown。
+ * 飞书经常用 div + data-block-type 表示标题/引用/高亮块，不先规整就会被压成普通段落。
+ */
+function normalizeFeishuHtml(html: string, boards: FeishuBoardCapture[] = []): string {
+  if (!html.trim()) return '';
+  const doc = new DOMParser().parseFromString(`<div id="zj-feishu-root">${html}</div>`, 'text/html');
+  const root = doc.querySelector('#zj-feishu-root');
+  if (!root) return html;
+
+  const fallbackBoards = Array.from(
+    root.querySelectorAll(
+      '[data-block-type="whiteboard"], .docx-whiteboard-block, [data-block-type="board"], .docx-board-block',
+    ),
+  );
+  for (const board of boards) {
+    const selector = board.recordId
+      ? `[data-record-id="${CSS.escape(board.recordId)}"]`
+      : board.blockId
+        ? `[data-block-id="${CSS.escape(board.blockId)}"]`
+        : '';
+    const el = (selector ? root.querySelector(selector) : null) || fallbackBoards[board.index] || null;
+    if (!el) continue;
+    const img = doc.createElement('img');
+    img.setAttribute('src', board.url);
+    img.setAttribute('alt', '飞书画板');
+    el.replaceWith(img);
+  }
+
+  // 先处理外层块；替换后原子节点会脱离文档，避免同一块被重复规整。
+  const blocks = Array.from(root.querySelectorAll('[data-block-type]'));
+  for (const el of blocks) {
+    if (!el.isConnected) continue;
+    const kind = feishuBlockKind(el);
+    const level = headingLevel(el, kind);
+
+    if (kind === 'page') continue;
+    if (kind === 'callout') {
+      const quote = replaceWithSemanticTag(el, 'blockquote', true);
+      quote.setAttribute('data-obsidian-callout', 'note');
+      continue;
+    }
+    if (kind === 'quote_container' && el.tagName !== 'BLOCKQUOTE') {
+      replaceWithSemanticTag(el, 'blockquote', true);
+      continue;
+    }
+    if (level && !/^H[1-6]$/.test(el.tagName)) {
+      replaceWithSemanticTag(el, `h${level}`);
+      continue;
+    }
+    if (kind === 'bullet') {
+      const li = replaceWithSemanticTag(el, 'li');
+      const ul = doc.createElement('ul');
+      li.replaceWith(ul);
+      ul.appendChild(li);
+      continue;
+    }
+    if (kind === 'ordered') {
+      const li = replaceWithSemanticTag(el, 'li');
+      const ol = doc.createElement('ol');
+      li.replaceWith(ol);
+      ol.appendChild(li);
+      continue;
+    }
+    if (kind === 'todo') {
+      const checked =
+        el.getAttribute('aria-checked') === 'true' || /checked|completed|done/.test(kind);
+      const p = replaceWithSemanticTag(el, 'p');
+      p.insertBefore(doc.createTextNode(checked ? '[x] ' : '[ ] '), p.firstChild);
+      continue;
+    }
+    if (kind === 'code' && el.tagName !== 'PRE') {
+      const pre = replaceWithSemanticTag(el, 'pre');
+      const code = doc.createElement('code');
+      while (pre.firstChild) code.appendChild(pre.firstChild);
+      pre.appendChild(code);
+    }
+  }
+
+  // 飞书行内背景色是语义高亮，转为 mark 后由共享规则输出 ==text==。
+  for (const el of Array.from(root.querySelectorAll<HTMLElement>('span, font'))) {
+    const style = (el.getAttribute('style') || '').toLowerCase();
+    const cls = (el.className || '').toLowerCase();
+    const bg = (style.match(/background(?:-color)?\s*:\s*([^;]+)/) || [])[1] || '';
+    const hasVisibleBg =
+      !!bg &&
+      !/transparent|inherit|initial|unset|none/.test(bg) &&
+      !/rgba\([^)]*,\s*0(?:\.0+)?\s*\)/.test(bg);
+    const highlighted =
+      hasVisibleBg ||
+      /highlight|text-background|bg-color/.test(cls) ||
+      !!el.getAttribute('data-background-color');
+    if (!highlighted || !el.textContent?.trim()) continue;
+    const mark = doc.createElement('mark');
+    for (const child of Array.from(el.childNodes)) mark.appendChild(child.cloneNode(true));
+    el.replaceWith(mark);
+  }
+
+  return root.innerHTML;
+}
+
+function feishuHtmlToMarkdown(html: string, boards: FeishuBoardCapture[] = []): string {
+  return htmlToMarkdown(normalizeFeishuHtml(html, boards));
+}
+
 /** 飞书正文清洗：去零宽字符 → 过滤噪声行 → 折叠多余空行 */
 function cleanFeishuMarkdown(md: string): string {
   let s = stripZeroWidth(md);
+  // 标题标记和文字必须同行；兼容飞书编辑器偶发残留的块级换行。
+  s = s.replace(/^(#{1,6})[ \t]*\n+(?:[ \t]*\n+)*([^\n]+)$/gm, '$1 $2');
+  // Callout/引用内不保留飞书编辑器包装层制造的空引用行。
+  s = s
+    .split('\n')
+    .filter((line) => !/^>(?:\s*>)*\s*$/.test(line.trim()))
+    .join('\n');
   s = s
     .split('\n')
     .filter((line) => {
@@ -59,15 +340,16 @@ function cleanFeishuMarkdown(md: string): string {
 }
 
 async function extractFeishu(ctx: ExtractContext, sel: string): Promise<ExtractedPage> {
+  const boards = await captureFeishuBoards();
   const parsed = await parseWithSelector(ctx.url, sel);
-  const defuddleMd = cleanFeishuMarkdown(htmlToMarkdown(parsed.content || ''));
+  const defuddleMd = cleanFeishuMarkdown(feishuHtmlToMarkdown(parsed.content || '', boards));
 
   // 完整抓取：把滚动收集“限定在正文容器内”，排除目录/导航/侧栏/通知等
   let contentMarkdown = defuddleMd;
   if (ctx.fullCapture) {
     const scope = sel || parsed.debug?.contentSelector;
-    const fullHtml = await captureFullContent(scope);
-    const fullMd = cleanFeishuMarkdown(htmlToMarkdown(fullHtml));
+    const fullHtml = await captureFullContent(scope, '[data-block-id], [data-record-id]');
+    const fullMd = cleanFeishuMarkdown(feishuHtmlToMarkdown(fullHtml, boards));
     if (fullMd.length > defuddleMd.length) contentMarkdown = fullMd;
   }
 
@@ -75,11 +357,14 @@ async function extractFeishu(ctx: ExtractContext, sel: string): Promise<Extracte
   let cleanTitle = stripZeroWidth(parsed.title || document.title || '未命名').trim();
   const sufIdx = cleanTitle.lastIndexOf('飞书云文档');
   if (sufIdx > 0) cleanTitle = cleanTitle.slice(0, sufIdx).replace(/[\s\-|]+$/, '').trim();
+  const author = feishuAuthor() || parsed.author || '';
+  const modified = feishuModified(cleanTitle);
 
   return {
     title: cleanTitle || '未命名',
-    author: parsed.author || '',
+    author,
     published: parsed.published || '',
+    modified,
     description: parsed.description || '',
     site: parsed.site || '',
     domain: parsed.domain || location.hostname,

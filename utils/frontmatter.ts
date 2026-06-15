@@ -52,6 +52,7 @@ export function buildFrontmatter(props: ClipProperties, settings: Settings): str
   if (f.source && props.source) lines.push(`source: ${yamlScalar(props.source)}`);
   if (f.author && props.author) lines.push(`author: ${yamlScalar(props.author)}`);
   if (f.published && props.published) lines.push(`published: ${yamlScalar(props.published)}`);
+  if (f.modified && props.modified) lines.push(`modified: ${yamlScalar(props.modified)}`);
   if (f.description && props.description) {
     // 描述折叠为单行，避免破坏 YAML
     lines.push(`description: ${yamlScalar(props.description.replace(/\s+/g, ' ').trim())}`);

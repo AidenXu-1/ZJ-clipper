@@ -6,6 +6,7 @@ import { buildObsidianUri, buildOpenUri, URI_LENGTH_WARN } from '@/utils/obsidia
 import { saveViaRest, fileExists } from '@/utils/rest';
 import { processNoteImages } from '@/utils/images';
 import { sendToTab } from '@/utils/messaging';
+import { applyReadingStatus, tagsForSite, uniqueTags } from '@/utils/tags';
 import {
   channelName,
   renderFilename,
@@ -82,8 +83,10 @@ export function App() {
   const [useSelection, setUseSelection] = useState(false);
   const [author, setAuthor] = useState('');
   const [published, setPublished] = useState('');
+  const [modified, setModified] = useState('');
   const [description, setDescription] = useState('');
   const [tagsStr, setTagsStr] = useState('');
+  const [learned, setLearned] = useState(false);
   const [tagInput, setTagInput] = useState('');
   const [folder, setFolder] = useState('');
   const [filename, setFilename] = useState('');
@@ -122,11 +125,18 @@ export function App() {
       setBody(hasSel ? d.selectionMarkdown : d.contentMarkdown);
       setAuthor(d.author);
       setPublished(d.published);
+      setModified(d.modified || '');
       setDescription(d.description || '');
-      if (d.tags?.length) {
-        const kept = filterTags(d.tags, s.tagBlocklist || []);
-        if (kept.length) setTagsStr(kept.join(', '));
-      }
+      const pageTags = filterTags(d.tags || [], s.tagBlocklist || []);
+      const siteTags = tagsForSite(d.url, s.siteTagRules || []);
+      setTagsStr(
+        applyReadingStatus(
+          uniqueTags([...siteTags, ...pageTags]),
+          false,
+          s.unreadTag,
+          s.learnedTag,
+        ).join(', '),
+      );
       setFilename(renderFilename(s.filenameTemplate, { title: d.title, date: todayCompact() }));
       setPhase('ready');
     })();
@@ -144,10 +154,19 @@ export function App() {
         setPage(d);
         setUseSelection(false);
         setBody(d.contentMarkdown);
-        if (d.tags?.length) {
-          const kept = filterTags(d.tags, settings?.tagBlocklist || []);
-          if (kept.length) setTagsStr(kept.join(', '));
-        }
+        setAuthor(d.author);
+        setPublished(d.published);
+        setModified(d.modified || '');
+        const kept = filterTags(d.tags || [], settings?.tagBlocklist || []);
+        const siteTags = tagsForSite(d.url, settings?.siteTagRules || []);
+        setTagsStr((current) =>
+          applyReadingStatus(
+            uniqueTags([...parseTags(current), ...siteTags, ...kept]),
+            learned,
+            settings?.unreadTag || 'unread',
+            settings?.learnedTag || '已学习',
+          ).join(', '),
+        );
       } else {
         setSavedMsg(resp.error);
       }
@@ -217,6 +236,17 @@ export function App() {
     return joinFolder(folder, sub);
   }, [settings, page, folder, title]);
 
+  const resolvedTags = useMemo(
+    () =>
+      applyReadingStatus(
+        parseTags(tagsStr),
+        learned,
+        settings?.unreadTag || 'unread',
+        settings?.learnedTag || '已学习',
+      ),
+    [tagsStr, learned, settings],
+  );
+
   const uriPreviewLength = useMemo(() => {
     if (!page || !settings) return 0;
     const props: ClipProperties = {
@@ -224,15 +254,16 @@ export function App() {
       source: page.url,
       author,
       published,
+      modified,
       description,
       clipped: today(),
-      tags: parseTags(tagsStr),
+      tags: resolvedTags,
       stats: page.stats,
     };
     const note = composeNote(props, body, settings);
     return buildObsidianUri({ vault, filePath: joinPath(clipFolder, filename), content: note })
       .length;
-  }, [page, settings, title, author, published, tagsStr, body, vault, clipFolder, filename]);
+  }, [page, settings, title, author, published, modified, resolvedTags, body, vault, clipFolder, filename]);
 
   // #1 去重：REST 模式下查目标路径是否已存在（仅提示，不阻断；失败按不存在）
   useEffect(() => {
@@ -273,9 +304,10 @@ export function App() {
       source: page.url,
       author,
       published,
+      modified,
       description,
       clipped: today(),
-      tags: parseTags(tagsStr),
+      tags: resolvedTags,
       stats: page.stats,
     };
     let note = composeNote(props, body, settings);
@@ -329,12 +361,33 @@ export function App() {
   function appendTag(tag: string) {
     const t = tag.trim().replace(/^#+/, '');
     if (!t) return;
+    if (t.toLowerCase() === (settings?.unreadTag || 'unread').trim().toLowerCase()) {
+      toggleLearned(false);
+      return;
+    }
+    if (t.toLowerCase() === (settings?.learnedTag || '已学习').trim().toLowerCase()) {
+      toggleLearned(true);
+      return;
+    }
     const cur = parseTags(tagsStr);
     if (cur.some((x) => x.toLowerCase() === t.toLowerCase())) return;
     setTagsStr([...cur, t].join(', '));
   }
   function removeTag(tag: string) {
+    const statusTags = [settings?.unreadTag || 'unread', settings?.learnedTag || '已学习'];
+    if (statusTags.some((status) => status.trim().toLowerCase() === tag.toLowerCase())) return;
     setTagsStr(parseTags(tagsStr).filter((t) => t !== tag).join(', '));
+  }
+  function toggleLearned(next: boolean) {
+    setLearned(next);
+    setTagsStr((current) =>
+      applyReadingStatus(
+        parseTags(current),
+        next,
+        settings?.unreadTag || 'unread',
+        settings?.learnedTag || '已学习',
+      ).join(', '),
+    );
   }
   function commitTagInput() {
     if (tagInput.trim()) appendTag(tagInput);
@@ -398,6 +451,19 @@ export function App() {
       {/* 笔记属性面板（实时可编辑，仿 Obsidian） */}
       <div className="zc-props">
         <div className="zc-prop">
+          <span className="zc-prop-icon">✓</span>
+          <span className="zc-prop-key">学习状态</span>
+          <label className="zc-learned">
+            <input
+              type="checkbox"
+              checked={learned}
+              onChange={(e) => toggleLearned(e.target.checked)}
+            />
+            {T.markLearned}
+            <span>{learned ? settings?.learnedTag : settings?.unreadTag}</span>
+          </label>
+        </div>
+        <div className="zc-prop">
           <span className="zc-prop-icon">🔗</span>
           <span className="zc-prop-key">source</span>
           <input className="zc-prop-val zc-ro" value={page?.url ?? ''} readOnly />
@@ -419,6 +485,16 @@ export function App() {
             value={published}
             placeholder="YYYY-MM-DD"
             onChange={(e) => setPublished(e.target.value)}
+          />
+        </div>
+        <div className="zc-prop">
+          <span className="zc-prop-icon">📝</span>
+          <span className="zc-prop-key">modified</span>
+          <input
+            className="zc-prop-val"
+            value={modified}
+            placeholder="YYYY-MM-DD"
+            onChange={(e) => setModified(e.target.value)}
           />
         </div>
         <div className="zc-prop">
@@ -444,9 +520,13 @@ export function App() {
               {parseTags(tagsStr).map((t) => (
                 <span className="zc-tag" key={t}>
                   {t}
-                  <button className="zc-tag-x" title="移除" onClick={() => removeTag(t)}>
-                    ✕
-                  </button>
+                  {![settings?.unreadTag, settings?.learnedTag]
+                    .filter(Boolean)
+                    .some((status) => status?.trim().toLowerCase() === t.toLowerCase()) && (
+                    <button className="zc-tag-x" title="移除" onClick={() => removeTag(t)}>
+                      ✕
+                    </button>
+                  )}
                 </span>
               ))}
               <input

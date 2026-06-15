@@ -133,6 +133,17 @@ body {
 .zc-cf-val {
   flex: 1;
 }
+.zc-site-domain {
+  flex: 1;
+}
+.zc-site-tag {
+  flex: 0 0 34%;
+}
+.zc-two-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
 .zc-cf-del {
   flex: none;
   border: 1px solid var(--border);
