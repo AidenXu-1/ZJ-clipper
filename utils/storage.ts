@@ -1,29 +1,51 @@
-// 兆基clipper —— 设置读写（chrome.storage.sync）
+// 兆基clipper —— 普通设置使用 sync；API Key 单独留在当前设备的 local
 import { Settings, DEFAULT_SETTINGS } from './types';
 
 const KEY = 'zhaoji_clipper_settings';
 const LEGACY_KEY = 'jicun_settings';
+const REST_API_KEY = 'zhaoji_clipper_rest_api_key';
 
 export async function loadSettings(): Promise<Settings> {
-  const raw = await chrome.storage.sync.get([KEY, LEGACY_KEY]);
-  const stored = (raw?.[KEY] ?? raw?.[LEGACY_KEY] ?? {}) as Partial<Settings>;
-  if (!raw?.[KEY] && raw?.[LEGACY_KEY]) {
-    await chrome.storage.sync.set({ [KEY]: stored });
+  const [syncRaw, localRaw] = await Promise.all([
+    chrome.storage.sync.get([KEY, LEGACY_KEY]),
+    chrome.storage.local.get(REST_API_KEY),
+  ]);
+  const stored = (syncRaw?.[KEY] ?? syncRaw?.[LEGACY_KEY] ?? {}) as Partial<Settings>;
+  const { restApiKey: syncedApiKey = '', ...safeStored } = stored;
+  const localApiKey = typeof localRaw?.[REST_API_KEY] === 'string'
+    ? localRaw[REST_API_KEY]
+    : '';
+
+  // 旧版本把整份设置存入 sync。首次升级时把密钥迁到 local，随后清除同步副本。
+  if (!localApiKey && syncedApiKey) {
+    await chrome.storage.local.set({ [REST_API_KEY]: syncedApiKey });
   }
+  if (!syncRaw?.[KEY] || syncedApiKey || syncRaw?.[LEGACY_KEY]) {
+    await chrome.storage.sync.set({ [KEY]: safeStored });
+    await chrome.storage.sync.remove(LEGACY_KEY);
+  }
+
   // 深合并，保证新增字段有默认值
   return {
     ...DEFAULT_SETTINGS,
-    ...stored,
-    siteTagRules: stored.siteTagRules ?? DEFAULT_SETTINGS.siteTagRules,
+    ...safeStored,
+    restApiKey: localApiKey || syncedApiKey,
+    siteTagRules: safeStored.siteTagRules ?? DEFAULT_SETTINGS.siteTagRules,
     frontmatterFields: {
       ...DEFAULT_SETTINGS.frontmatterFields,
-      ...(stored.frontmatterFields ?? {}),
+      ...(safeStored.frontmatterFields ?? {}),
     },
   };
 }
 
 export async function saveSettings(settings: Settings): Promise<void> {
-  await chrome.storage.sync.set({ [KEY]: settings });
+  const { restApiKey, ...safeSettings } = settings;
+  await Promise.all([
+    chrome.storage.sync.set({ [KEY]: safeSettings }),
+    restApiKey
+      ? chrome.storage.local.set({ [REST_API_KEY]: restApiKey })
+      : chrome.storage.local.remove(REST_API_KEY),
+  ]);
 }
 
 // ===== 标签历史（本地，用于"常用标签"复用补全；非全仓库扫描）=====

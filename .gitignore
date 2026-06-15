@@ -16,3 +16,16 @@ npm-debug.log*
 .idea/
 .vscode/
 *.swp
+
+# 本机配置与密钥材料
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.mobileprovision
+credentials.json
+secrets.json
+*.local.json
