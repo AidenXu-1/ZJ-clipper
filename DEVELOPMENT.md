@@ -237,7 +237,7 @@ Obsidian 是 `app://` 环境，视频 iframe 或嵌入链接不要使用协议�
 REST 模式依赖用户本机 Obsidian 的 Local REST API 插件。
 
 - 默认地址：`http://127.0.0.1:27123`
-- API Key 保存在浏览器扩展存储中。
+- API Key 单独保存在 `chrome.storage.local`，普通设置保存在 `chrome.storage.sync`。不要把密钥重新并入整份同步设置。
 - 用户可能把 `Bearer xxx` 整行粘贴进来，`utils/rest.ts` 会自动去掉多余前缀。
 
 ### frontmatter

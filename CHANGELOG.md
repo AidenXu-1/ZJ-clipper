@@ -1,5 +1,18 @@
 # Changelog
 
+## v2.0.1 - 2026-06-15
+
+安全与发布流程加固版本。
+
+### Security
+
+- Local REST API Key 从 `chrome.storage.sync` 迁移到当前设备的 `chrome.storage.local`，并自动清除旧同步副本。
+- 增加常见密钥与本机配置文件的 Git 忽略规则。
+- GitHub Actions 固定到官方发布提交 SHA，降低工作流供应链风险。
+- CI 增加生产依赖安全审计；当前生产依赖漏洞为 0。
+- 覆盖修复 `tar`、`shell-quote`、`tmp`、`uuid` 间接开发依赖，开发依赖 critical 漏洞降为 0。
+- 增加 Dependabot 配置和私密漏洞报告说明。
+
 ## v2.0.0 - 2026-06-15
 
 兆基clipper 2.0 重点优化飞书文档与 X / Twitter 长文章的剪存质量。

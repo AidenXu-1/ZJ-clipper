@@ -162,7 +162,7 @@ python3 -c "d=open('.output/chrome-mv3/content-scripts/content.js','rb').read();
 
 ## 隐私
 
-兆基clipper 不提供云端服务，不采集用户剪藏内容，不上传网页正文、图片、标签或 Obsidian 配置。Local REST API Key 保存在浏览器本地扩展存储中，仅用于请求用户本机的 Obsidian Local REST API。
+兆基clipper 不提供云端服务，不采集用户剪藏内容，不上传网页正文、图片、标签或 Obsidian 配置。Local REST API Key 单独保存在当前设备的 `chrome.storage.local`，不会写入 GitHub，也不会通过 `chrome.storage.sync` 随浏览器账号同步；它仅用于请求用户本机的 Obsidian Local REST API。
 
 详见 [`PRIVACY.md`](./PRIVACY.md)。
 
