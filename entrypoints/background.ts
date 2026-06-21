@@ -1,6 +1,7 @@
 // 兆基clipper —— 后台 service worker：右键菜单 + 打开 obsidian:// URI
 import { SaveRequest } from '@/utils/types';
 import { sendToTab } from '@/utils/messaging';
+import { isAuthGatedHost } from '@/utils/hosts';
 
 const MENU_ID = 'zhaoji-clipper-clip';
 const MENU_HL = 'zhaoji-clipper-highlight';
@@ -101,7 +102,9 @@ async function fetchImage(
   url: string,
 ): Promise<{ ok: true; base64: string; mime: string } | { ok: false; error: string }> {
   try {
-    const res = await fetch(url, { credentials: 'include' });
+    // 仅对需登录的站点（飞书/Lark）带 Cookie；公开图一律不带，最小化 Cookie 暴露面
+    const credentials = isAuthGatedHost(url) ? 'include' : 'omit';
+    const res = await fetch(url, { credentials });
     if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
     const mime = res.headers.get('content-type')?.split(';')[0]?.trim() || '';
     if (!mime.startsWith('image/')) return { ok: false, error: `非图片(${mime})` };

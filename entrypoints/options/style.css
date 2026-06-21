@@ -196,6 +196,11 @@ body {
   margin: 4px 0;
 }
 
+.zc-check.zc-disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .zc-fields {
   display: grid;
   grid-template-columns: 1fr 1fr;

@@ -57,6 +57,8 @@ export interface ClipProperties {
   modified: string;
   description: string;
   clipped: string;
+  /** 学习状态：独立字段（已学习/未学习），与 tags 分开，避免被下游 Agent 重写关键词时冲掉 */
+  learningStatus: string;
   tags: string[];
   /** 互动数据（来自页面，非用户编辑），写入 frontmatter */
   stats?: ClipStats;
@@ -106,9 +108,9 @@ export interface Settings {
   filenameTemplate: string;
   /** 标签黑名单：抓到的页面标签若命中名单则丢弃（用户自定义，机械过滤，非 AI 判断） */
   tagBlocklist: string[];
-  /** 未勾选“本篇已学习”时自动添加的标签 */
+  /** 「学习状态」字段：未勾选「本篇已学习」时写入的值（如 未学习） */
   unreadTag: string;
-  /** 勾选“本篇已学习”时替换成的标签 */
+  /** 「学习状态」字段：勾选「本篇已学习」时写入的值（如 已学习） */
   learnedTag: string;
   /** 按网站域名自动添加标签 */
   siteTagRules: SiteTagRule[];
@@ -141,7 +143,7 @@ export const DEFAULT_SETTINGS: Settings = {
   attachmentsFolder: 'attachments',
   filenameTemplate: '{{title}}',
   tagBlocklist: [],
-  unreadTag: 'unread',
+  unreadTag: '未学习',
   learnedTag: '已学习',
   siteTagRules: [{ domain: 'woshipm.com', tag: 'PM' }],
   includeFrontmatter: true,

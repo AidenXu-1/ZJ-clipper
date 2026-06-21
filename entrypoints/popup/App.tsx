@@ -1,12 +1,11 @@
-import { useEffect, useMemo, useState, type KeyboardEvent } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { T } from '@/utils/strings';
-import { loadSettings, loadTagHistory, pushTagHistory } from '@/utils/storage';
+import { loadSettings, saveSettings } from '@/utils/storage';
 import { composeNote } from '@/utils/frontmatter';
 import { buildObsidianUri, buildOpenUri, URI_LENGTH_WARN } from '@/utils/obsidian';
 import { saveViaRest, fileExists } from '@/utils/rest';
-import { processNoteImages } from '@/utils/images';
+import { processNoteImages, isUnreferenceable } from '@/utils/images';
 import { sendToTab } from '@/utils/messaging';
-import { applyReadingStatus, tagsForSite, uniqueTags } from '@/utils/tags';
 import {
   channelName,
   renderFilename,
@@ -43,6 +42,9 @@ async function extractActiveTab(fullCapture = false): Promise<ExtractResponse> {
   }
 }
 
+/** 匹配正文里的图片链接 ![alt](url)，仅捕获 url（用于 URI 模式下探测需登录的图） */
+const IMG_LINK_RE = /!\[[^\]]*\]\(([^)\s]+)\)/g;
+
 /** 拼接 仓库内路径：文件夹 + 文件名 */
 function joinPath(folder: string, filename: string): string {
   const f = folder.trim().replace(/^\/+|\/+$/g, '');
@@ -55,20 +57,6 @@ function joinFolder(a: string, b: string): string {
   const x = a.trim().replace(/^\/+|\/+$/g, '');
   const y = b.trim().replace(/^\/+|\/+$/g, '');
   return [x, y].filter(Boolean).join('/');
-}
-
-function parseTags(input: string): string[] {
-  return input
-    .split(/[,，]/)
-    .map((t) => t.trim())
-    .filter(Boolean);
-}
-
-/** 按用户黑名单机械过滤页面标签（归一化大小写/空格/连字符比较），非 AI 判断 */
-function filterTags(tags: string[], blocklist: string[]): string[] {
-  const norm = (s: string) => s.toLowerCase().replace(/[\s\-]+/g, '');
-  const block = new Set(blocklist.map(norm).filter(Boolean));
-  return tags.filter((t) => !block.has(norm(t)));
 }
 
 export function App() {
@@ -85,33 +73,30 @@ export function App() {
   const [published, setPublished] = useState('');
   const [modified, setModified] = useState('');
   const [description, setDescription] = useState('');
-  const [tagsStr, setTagsStr] = useState('');
   const [learned, setLearned] = useState(false);
-  const [tagInput, setTagInput] = useState('');
   const [folder, setFolder] = useState('');
   const [filename, setFilename] = useState('');
   const [vault, setVault] = useState('');
+  const [saveImagesLocal, setSaveImagesLocal] = useState(false); // 图片处理：true=下载到本地，false=引用链接
 
   const [saving, setSaving] = useState(false);
   const [savedMsg, setSavedMsg] = useState('');
   const [savedUri, setSavedUri] = useState<string | null>(null); // 保存成功后的"打开"URI（#2）
   const [alreadyExists, setAlreadyExists] = useState(false); // 目标已存在（#1 去重，仅 REST）
-  const [tagHistory, setTagHistory] = useState<string[]>([]); // 常用标签历史（#3）
   const [fullCapturing, setFullCapturing] = useState(false);
   const [diagnosing, setDiagnosing] = useState(false);
 
   useEffect(() => {
     (async () => {
-      const [resp, s, th] = await Promise.all([
+      const [resp, s] = await Promise.all([
         extractActiveTab(),
         loadSettings(),
-        loadTagHistory(),
       ]);
       setSettings(s);
       document.documentElement.dataset.theme = s.theme; // 应用主题（auto/light/dark）
       setVault(s.vaultName);
       setFolder(s.defaultFolder);
-      setTagHistory(th);
+      setSaveImagesLocal(s.saveImagesLocal);
       if (!resp.ok) {
         setErrMsg(resp.error);
         setPhase('error');
@@ -127,16 +112,6 @@ export function App() {
       setPublished(d.published);
       setModified(d.modified || '');
       setDescription(d.description || '');
-      const pageTags = filterTags(d.tags || [], s.tagBlocklist || []);
-      const siteTags = tagsForSite(d.url, s.siteTagRules || []);
-      setTagsStr(
-        applyReadingStatus(
-          uniqueTags([...siteTags, ...pageTags]),
-          false,
-          s.unreadTag,
-          s.learnedTag,
-        ).join(', '),
-      );
       setFilename(renderFilename(s.filenameTemplate, { title: d.title, date: todayCompact() }));
       setPhase('ready');
     })();
@@ -157,16 +132,6 @@ export function App() {
         setAuthor(d.author);
         setPublished(d.published);
         setModified(d.modified || '');
-        const kept = filterTags(d.tags || [], settings?.tagBlocklist || []);
-        const siteTags = tagsForSite(d.url, settings?.siteTagRules || []);
-        setTagsStr((current) =>
-          applyReadingStatus(
-            uniqueTags([...parseTags(current), ...siteTags, ...kept]),
-            learned,
-            settings?.unreadTag || 'unread',
-            settings?.learnedTag || '已学习',
-          ).join(', '),
-        );
       } else {
         setSavedMsg(resp.error);
       }
@@ -224,6 +189,15 @@ export function App() {
     setBody(useSel ? page.selectionMarkdown : page.contentMarkdown);
   }
 
+  // 切换图片处理方式（下载到本地 / 引用链接）。与设置页同一开关，改动同步回设置，两处保持一致
+  async function changeImageMode(download: boolean) {
+    setSaveImagesLocal(download);
+    if (!settings) return;
+    const next = { ...settings, saveImagesLocal: download };
+    setSettings(next);
+    await saveSettings(next).catch(() => {});
+  }
+
   // 目标子文件夹：开启「每篇独立文件夹」时 = 基础文件夹/年月日-渠道-标题
   const clipFolder = useMemo(() => {
     if (!settings?.folderPerClip || !page) return folder;
@@ -236,16 +210,10 @@ export function App() {
     return joinFolder(folder, sub);
   }, [settings, page, folder, title]);
 
-  const resolvedTags = useMemo(
-    () =>
-      applyReadingStatus(
-        parseTags(tagsStr),
-        learned,
-        settings?.unreadTag || 'unread',
-        settings?.learnedTag || '已学习',
-      ),
-    [tagsStr, learned, settings],
-  );
+  // 学习状态字段值：已学习 / 未学习（独立 frontmatter 字段，不再混进 tags）
+  const learningStatus = learned
+    ? settings?.learnedTag || '已学习'
+    : settings?.unreadTag || '未学习';
 
   const uriPreviewLength = useMemo(() => {
     if (!page || !settings) return 0;
@@ -257,13 +225,14 @@ export function App() {
       modified,
       description,
       clipped: today(),
-      tags: resolvedTags,
+      learningStatus,
+      tags: [],
       stats: page.stats,
     };
     const note = composeNote(props, body, settings);
     return buildObsidianUri({ vault, filePath: joinPath(clipFolder, filename), content: note })
       .length;
-  }, [page, settings, title, author, published, modified, resolvedTags, body, vault, clipFolder, filename]);
+  }, [page, settings, title, author, published, modified, learningStatus, body, vault, clipFolder, filename]);
 
   // #1 去重：REST 模式下查目标路径是否已存在（仅提示，不阻断；失败按不存在）
   useEffect(() => {
@@ -307,7 +276,8 @@ export function App() {
       modified,
       description,
       clipped: today(),
-      tags: resolvedTags,
+      learningStatus,
+      tags: [],
       stats: page.stats,
     };
     let note = composeNote(props, body, settings);
@@ -315,34 +285,52 @@ export function App() {
     // 开启独立文件夹时，图片就放进该文件夹；否则放全局附件夹
     const imagesFolder = settings.folderPerClip ? clipFolder : settings.attachmentsFolder;
     try {
+      let tailMsg = '';
       if (isRest) {
         const restCfg = { baseUrl: settings.restBaseUrl, apiKey: settings.restApiKey };
-        if (settings.saveImagesLocal) {
-          const r = await processNoteImages(
-            note,
-            title,
-            imagesFolder,
-            restCfg,
-            (d, t) => setSavedMsg(`正在保存图片 ${d}/${t}…`),
-            page.inlineImages,
+        // 下载模式：下载全部图片；引用模式：只下载无法被引用的图（飞书/blob），其余保留链接
+        const urlFilter = saveImagesLocal ? undefined : isUnreferenceable;
+        const r = await processNoteImages(
+          note,
+          title,
+          imagesFolder,
+          restCfg,
+          (d, t) => setSavedMsg(`正在保存图片 ${d}/${t}…`),
+          page.inlineImages,
+          urlFilter,
+        );
+        note = r.note;
+        if (r.total > 0) {
+          // 下载模式：报全部；引用模式：说明这些是「需登录、无法引用」才下载的图，避免用户困惑
+          const base = saveImagesLocal
+            ? T.imagesSavedAll(r.saved, r.total)
+            : T.imagesSavedGated(r.saved, r.total);
+          setSavedMsg(
+            base + (r.saved < r.total && r.lastError ? T.imagesSavedFail(r.lastError) : ''),
           );
-          note = r.note;
-          if (r.total > 0) {
-            setSavedMsg(
-              `图片 ${r.saved}/${r.total} 已保存` +
-                (r.saved < r.total && r.lastError ? `（失败：${r.lastError}）` : ''),
-            );
-            await new Promise((res) => setTimeout(res, 900));
-          }
+          await new Promise((res) => setTimeout(res, 900));
         }
         await saveViaRest(restCfg, filePath, note);
       } else {
+        // obsidian:// 方式无法下载图片；引用模式下若含需登录的图（飞书等），提示用户改用 REST
+        if (!saveImagesLocal) {
+          let gated = false;
+          let im: RegExpExecArray | null;
+          IMG_LINK_RE.lastIndex = 0;
+          while ((im = IMG_LINK_RE.exec(note))) {
+            if (isUnreferenceable(im[1])) {
+              gated = true;
+              break;
+            }
+          }
+          IMG_LINK_RE.lastIndex = 0; // 复位全局正则状态，避免影响下次保存
+          if (gated) tailMsg = T.gatedImagesUriNote;
+        }
         const uri = buildObsidianUri({ vault: vault.trim(), filePath, content: note });
         await chrome.runtime.sendMessage({ type: 'ZHAOJI_CLIPPER_SAVE', url: uri });
       }
-      await pushTagHistory(props.tags); // #3 记住用过的标签
       setSavedUri(buildOpenUri(vault.trim(), filePath)); // #2 保存后可打开
-      setSavedMsg(T.savedOk);
+      setSavedMsg(T.savedOk + tailMsg);
     } catch (e) {
       setSavedMsg(e instanceof Error ? e.message : String(e));
     } finally {
@@ -357,50 +345,9 @@ export function App() {
     window.close();
   }
 
-  // 标签编辑（chip 式）：追加 / 移除 / 输入提交
-  function appendTag(tag: string) {
-    const t = tag.trim().replace(/^#+/, '');
-    if (!t) return;
-    if (t.toLowerCase() === (settings?.unreadTag || 'unread').trim().toLowerCase()) {
-      toggleLearned(false);
-      return;
-    }
-    if (t.toLowerCase() === (settings?.learnedTag || '已学习').trim().toLowerCase()) {
-      toggleLearned(true);
-      return;
-    }
-    const cur = parseTags(tagsStr);
-    if (cur.some((x) => x.toLowerCase() === t.toLowerCase())) return;
-    setTagsStr([...cur, t].join(', '));
-  }
-  function removeTag(tag: string) {
-    const statusTags = [settings?.unreadTag || 'unread', settings?.learnedTag || '已学习'];
-    if (statusTags.some((status) => status.trim().toLowerCase() === tag.toLowerCase())) return;
-    setTagsStr(parseTags(tagsStr).filter((t) => t !== tag).join(', '));
-  }
+  // 学习状态切换：已学习 / 未学习（写入独立 frontmatter 字段）
   function toggleLearned(next: boolean) {
     setLearned(next);
-    setTagsStr((current) =>
-      applyReadingStatus(
-        parseTags(current),
-        next,
-        settings?.unreadTag || 'unread',
-        settings?.learnedTag || '已学习',
-      ).join(', '),
-    );
-  }
-  function commitTagInput() {
-    if (tagInput.trim()) appendTag(tagInput);
-    setTagInput('');
-  }
-  function handleTagKey(e: KeyboardEvent<HTMLInputElement>) {
-    if (e.key === 'Enter' || e.key === ',' || e.key === '，') {
-      e.preventDefault();
-      commitTagInput();
-    } else if (e.key === 'Backspace' && !tagInput) {
-      const cur = parseTags(tagsStr);
-      if (cur.length) setTagsStr(cur.slice(0, -1).join(', '));
-    }
   }
 
   if (phase === 'loading') {
@@ -512,49 +459,7 @@ export function App() {
             onChange={(e) => setDescription(e.target.value)}
           />
         </div>
-        <div className="zc-prop zc-prop-top">
-          <span className="zc-prop-icon">🏷️</span>
-          <span className="zc-prop-key">tags</span>
-          <div className="zc-prop-val zc-tagbox">
-            <div className="zc-taglist">
-              {parseTags(tagsStr).map((t) => (
-                <span className="zc-tag" key={t}>
-                  {t}
-                  {![settings?.unreadTag, settings?.learnedTag]
-                    .filter(Boolean)
-                    .some((status) => status?.trim().toLowerCase() === t.toLowerCase()) && (
-                    <button className="zc-tag-x" title="移除" onClick={() => removeTag(t)}>
-                      ✕
-                    </button>
-                  )}
-                </span>
-              ))}
-              <input
-                className="zc-tag-input"
-                value={tagInput}
-                placeholder={parseTags(tagsStr).length ? '' : T.addTag}
-                onChange={(e) => setTagInput(e.target.value)}
-                onKeyDown={handleTagKey}
-                onBlur={commitTagInput}
-              />
-            </div>
-            {(() => {
-              const recent = tagHistory.filter(
-                (t) => !parseTags(tagsStr).some((c) => c.toLowerCase() === t.toLowerCase()),
-              );
-              return recent.length > 0 ? (
-                <div className="zc-tagrecent">
-                  <span className="zc-tagrecent-label">{T.recentTags}</span>
-                  {recent.slice(0, 5).map((t) => (
-                    <button key={t} type="button" className="zc-chip" onClick={() => appendTag(t)}>
-                      {t}
-                    </button>
-                  ))}
-                </div>
-              ) : null;
-            })()}
-          </div>
-        </div>
+        {/* 关键词（tags）不再由 clipper 生成，交给下游 Agent 重写 YAML 时补全 */}
         {/* 互动数据已改放正文顶部（视频/链接上方），不再作为属性显示 */}
       </div>
 
@@ -605,6 +510,41 @@ export function App() {
         onChange={(e) => setBody(e.target.value)}
         rows={8}
       />
+
+      {(() => {
+        const isRest = settings?.saveMethod === 'rest';
+        const downloadActive = isRest && saveImagesLocal;
+        return (
+          <div className="zc-imgblock">
+            <div className="zc-row zc-between">
+              <label className="zc-label zc-section">{T.imageSection}</label>
+              <div className="zc-toggle">
+                <button
+                  className={downloadActive ? 'on' : ''}
+                  disabled={!isRest}
+                  title={isRest ? '' : T.imageDownloadNeedRest}
+                  onClick={() => changeImageMode(true)}
+                >
+                  {T.imageDownload}
+                </button>
+                <button
+                  className={!downloadActive ? 'on' : ''}
+                  onClick={() => changeImageMode(false)}
+                >
+                  {T.imageReference}
+                </button>
+              </div>
+            </div>
+            <div className="zc-fieldhint">
+              {!isRest
+                ? T.imageDownloadNeedRest
+                : downloadActive
+                  ? T.imageDownloadHint
+                  : T.imageReferenceHint}
+            </div>
+          </div>
+        );
+      })()}
 
       <details className="zc-dest">
         <summary>

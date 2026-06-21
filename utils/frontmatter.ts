@@ -49,6 +49,8 @@ export function buildFrontmatter(props: ClipProperties, settings: Settings): str
 
   // title 始终写入
   lines.push(`title: ${yamlScalar(props.title)}`);
+  // 学习状态：独立字段（已学习/未学习），与 tags 分开，避免被下游 Agent 重写关键词时冲掉
+  if (props.learningStatus) lines.push(`学习状态: ${yamlScalar(props.learningStatus)}`);
   if (f.source && props.source) lines.push(`source: ${yamlScalar(props.source)}`);
   if (f.author && props.author) lines.push(`author: ${yamlScalar(props.author)}`);
   if (f.published && props.published) lines.push(`published: ${yamlScalar(props.published)}`);

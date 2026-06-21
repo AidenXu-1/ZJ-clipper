@@ -2,6 +2,7 @@
 import { FetchImageResponse } from './types';
 import { RestConfig, putBinary } from './rest';
 import { safeName } from './filename';
+import { isAuthGatedHost } from './hosts';
 
 const MIME_EXT: Record<string, string> = {
   'image/png': 'png',
@@ -42,6 +43,18 @@ function isVideoEmbed(u: string): boolean {
   return /(youtube\.com|youtu\.be|player\.bilibili\.com|bilibili\.com\/video|vimeo\.com)/.test(u);
 }
 
+/**
+ * 该图片地址能否被 Obsidian 直接按链接预览。
+ * 返回 true 表示「引用模式」下也必须下载到本地，否则裂图：
+ * - blob: 仅在原页面上下文有效；
+ * - 飞书/Lark 等需登录鉴权的域名。
+ */
+export function isUnreferenceable(url: string): boolean {
+  if (!url) return false;
+  if (url.startsWith('blob:')) return true;
+  return isAuthGatedHost(url);
+}
+
 // 匹配 https:// 远程图与 blob: 就地图（blob 由内容脚本预解析为 base64 传入）
 const IMG_RE = /!\[([^\]]*)\]\(((?:https?:\/\/|blob:)[^)\s]+)\)/g;
 
@@ -63,6 +76,9 @@ export async function processNoteImages(
   restCfg: RestConfig,
   onProgress?: (done: number, total: number) => void,
   inlineImages: Array<{ url: string; base64: string; mime: string }> = [],
+  // 仅下载满足该判定的图片；其余原样保留 ![](url)。下载模式不传=全部下载；
+  // 引用模式传 isUnreferenceable=只下载飞书/blob 等无法被引用的图。
+  urlFilter?: (url: string) => boolean,
 ): Promise<ImageResult> {
   const folder = (targetFolder || 'attachments').replace(/^\/+|\/+$/g, '');
   // blob: 等后台下不了的图，由内容脚本预解析为 base64 传进来，按 url 查表直接落盘
@@ -78,6 +94,7 @@ export async function processNoteImages(
     const url = m[2];
     if (isVideoEmbed(url) || seen.has(url)) continue;
     seen.add(url);
+    if (urlFilter && !urlFilter(url)) continue; // 引用模式：只下载无法被引用的图，其余保留链接
     items.push({ url, alt });
   }
   const unique = items.slice(0, 40);

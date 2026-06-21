@@ -355,6 +355,14 @@ body {
   background: var(--accent);
   color: var(--accent-fg);
 }
+.zc-toggle button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.zc-imgblock {
+  margin-top: 10px;
+}
 
 .zc-fullcap {
   border: 1px dashed var(--accent);

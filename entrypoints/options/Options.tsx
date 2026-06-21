@@ -58,26 +58,6 @@ export function Options() {
     setS((prev) => ({ ...prev, customFields: prev.customFields.filter((_, j) => j !== i) }));
   }
 
-  function setSiteTagRule(i: number, patch: Partial<{ domain: string; tag: string }>) {
-    setS((prev) => {
-      const next = [...prev.siteTagRules];
-      next[i] = { ...next[i], ...patch };
-      return { ...prev, siteTagRules: next };
-    });
-  }
-  function addSiteTagRule() {
-    setS((prev) => ({
-      ...prev,
-      siteTagRules: [...prev.siteTagRules, { domain: '', tag: '' }],
-    }));
-  }
-  function removeSiteTagRule(i: number) {
-    setS((prev) => ({
-      ...prev,
-      siteTagRules: prev.siteTagRules.filter((_, j) => j !== i),
-    }));
-  }
-
   async function handleSave() {
     await saveSettings(s);
     setSavedMsg(T.settingsSaved);
@@ -174,37 +154,51 @@ export function Options() {
         )}
       </div>
 
-      {isRest && (
-        <div className="zc-group">
-          <div className="zc-group-title">{T.settingsGroupImages}</div>
-          <label className="zc-check">
+      <div className="zc-group">
+        <div className="zc-group-title">{T.settingsGroupImages}</div>
+        <p className="zc-hint">{T.settingsImageIntro}</p>
+        {/* 两种图片处理方式：下载到本地 / 引用原网页链接（内部用 saveImagesLocal 布尔表示） */}
+        <label className={'zc-check' + (isRest ? '' : ' zc-disabled')}>
+          <input
+            type="radio"
+            name="imageMode"
+            checked={s.saveImagesLocal}
+            disabled={!isRest}
+            onChange={() => update('saveImagesLocal', true)}
+          />
+          {T.settingsImageDownload}
+        </label>
+        <p className="zc-hint">{T.settingsImageDownloadHint}</p>
+        <label className="zc-check">
+          <input
+            type="radio"
+            name="imageMode"
+            checked={!s.saveImagesLocal}
+            onChange={() => update('saveImagesLocal', false)}
+          />
+          {T.settingsImageReference}
+        </label>
+        <p className="zc-hint">{T.settingsImageReferenceHint}</p>
+        {!isRest && <p className="zc-hint">{T.settingsImageDownloadNeedRest}</p>}
+
+        {/* 附件文件夹仅在「下载到本地」且「每篇独立文件夹」关闭时有用 */}
+        {isRest && s.saveImagesLocal && !s.folderPerClip && (
+          <>
+            <label className="zc-l">{T.settingsAttachFolder}</label>
             <input
-              type="checkbox"
-              checked={s.saveImagesLocal}
-              onChange={(e) => update('saveImagesLocal', e.target.checked)}
+              className="zc-i"
+              value={s.attachmentsFolder}
+              onChange={(e) => update('attachmentsFolder', e.target.value)}
             />
-            {T.settingsSaveImages}
-          </label>
-          <p className="zc-hint">{T.settingsSaveImagesHint}</p>
-          {/* 附件文件夹仅在「每篇独立文件夹」关闭时有用——开启时图片直接进该篇文件夹 */}
-          {s.saveImagesLocal && !s.folderPerClip && (
-            <>
-              <label className="zc-l">{T.settingsAttachFolder}</label>
-              <input
-                className="zc-i"
-                value={s.attachmentsFolder}
-                onChange={(e) => update('attachmentsFolder', e.target.value)}
-              />
-              <p className="zc-hint">{T.settingsAttachFolderHint}</p>
-            </>
-          )}
-          {s.saveImagesLocal && s.folderPerClip && (
-            <p className="zc-hint">
-              当前图片随每篇文章存进它的独立文件夹。想把<b>所有图片集中到一个文件夹</b>？到下方「归档与命名」取消勾选「每篇独立文件夹」，这里就会出现附件文件夹设置。
-            </p>
-          )}
-        </div>
-      )}
+            <p className="zc-hint">{T.settingsAttachFolderHint}</p>
+          </>
+        )}
+        {isRest && s.saveImagesLocal && s.folderPerClip && (
+          <p className="zc-hint">
+            当前图片随每篇文章存进它的独立文件夹。想把<b>所有图片集中到一个文件夹</b>？到下方「归档与命名」取消勾选「每篇独立文件夹」，这里就会出现附件文件夹设置。
+          </p>
+        )}
+      </div>
 
       <div className="zc-group">
         <div className="zc-group-title">{T.settingsGroupArchive}</div>
@@ -246,24 +240,6 @@ export function Options() {
       </div>
 
       <div className="zc-group">
-        <div className="zc-group-title">{T.settingsTagBlock}</div>
-        <input
-          className="zc-i"
-          value={(s.tagBlocklist || []).join(', ')}
-          onChange={(e) =>
-            update(
-              'tagBlocklist',
-              e.target.value
-                .split(/[,，]/)
-                .map((t) => t.trim())
-                .filter(Boolean),
-            )
-          }
-        />
-        <p className="zc-hint">{T.settingsTagBlockHint}</p>
-      </div>
-
-      <div className="zc-group">
         <div className="zc-group-title">{T.settingsAutoTags}</div>
         <div className="zc-two-cols">
           <div>
@@ -284,31 +260,6 @@ export function Options() {
           </div>
         </div>
         <p className="zc-hint">{T.settingsReadingTagHint}</p>
-
-        <label className="zc-l zc-mt">{T.settingsSiteTags}</label>
-        {s.siteTagRules.map((rule, i) => (
-          <div className="zc-cf-row" key={i}>
-            <input
-              className="zc-i zc-site-domain"
-              placeholder={T.siteDomain}
-              value={rule.domain}
-              onChange={(e) => setSiteTagRule(i, { domain: e.target.value })}
-            />
-            <input
-              className="zc-i zc-site-tag"
-              placeholder={T.siteTag}
-              value={rule.tag}
-              onChange={(e) => setSiteTagRule(i, { tag: e.target.value })}
-            />
-            <button className="zc-cf-del" title="删除" onClick={() => removeSiteTagRule(i)}>
-              ✕
-            </button>
-          </div>
-        ))}
-        <button className="zc-cf-add" onClick={addSiteTagRule}>
-          {T.addSiteRule}
-        </button>
-        <p className="zc-hint">{T.settingsSiteTagsHint}</p>
       </div>
 
       <div className="zc-group">
@@ -324,7 +275,10 @@ export function Options() {
         {s.includeFrontmatter && (
           <>
             <div className="zc-fields">
-              {(Object.keys(s.frontmatterFields) as FieldKey[]).map((key) => (
+              {/* tags 字段已交给下游 Agent 处理，clipper 不再写入，故不在此提供开关 */}
+              {(Object.keys(s.frontmatterFields) as FieldKey[])
+                .filter((key) => key !== 'tags')
+                .map((key) => (
                 <label className="zc-check" key={key}>
                   <input
                     type="checkbox"

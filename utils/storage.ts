@@ -25,6 +25,11 @@ export async function loadSettings(): Promise<Settings> {
     await chrome.storage.sync.remove(LEGACY_KEY);
   }
 
+  // 旧版「未读标签」占位默认是英文 'unread'；升级为「学习状态」字段后统一显示为「未学习」
+  if (safeStored.unreadTag === 'unread') {
+    safeStored.unreadTag = DEFAULT_SETTINGS.unreadTag;
+  }
+
   // 深合并，保证新增字段有默认值
   return {
     ...DEFAULT_SETTINGS,
