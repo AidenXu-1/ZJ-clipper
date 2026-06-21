@@ -189,6 +189,27 @@ export function App() {
     setBody(useSel ? page.selectionMarkdown : page.contentMarkdown);
   }
 
+  // 一键切换仓库档：把所选档的配置镜像到当前生效配置，立即持久化（不用进设置/刷新）
+  async function switchProfile(id: string) {
+    if (!settings) return;
+    const p = settings.vaultProfiles.find((x) => x.id === id);
+    if (!p) return;
+    const next: Settings = {
+      ...settings,
+      activeProfileId: id,
+      saveMethod: p.saveMethod,
+      vaultName: p.vaultName,
+      restBaseUrl: p.restBaseUrl,
+      restApiKey: p.restApiKey,
+      defaultFolder: p.defaultFolder,
+    };
+    setSettings(next);
+    setVault(p.vaultName);
+    setFolder(p.defaultFolder);
+    setSavedMsg('');
+    await saveSettings(next).catch(() => {});
+  }
+
   // 切换图片处理方式（下载到本地 / 引用链接）。与设置页同一开关，改动同步回设置，两处保持一致
   async function changeImageMode(download: boolean) {
     setSaveImagesLocal(download);
@@ -513,6 +534,23 @@ export function App() {
         rows={8}
       />
 
+      {settings && settings.vaultProfiles.length > 1 && (
+        <div className="zc-row zc-between zc-profilerow">
+          <label className="zc-label zc-section">{T.saveTo}</label>
+          <select
+            className="zc-profile-select"
+            value={settings.activeProfileId}
+            onChange={(e) => switchProfile(e.target.value)}
+          >
+            {settings.vaultProfiles.map((p) => (
+              <option key={p.id} value={p.id}>
+                {(p.vaultName || '未命名仓库') + '（' + (p.saveMethod === 'rest' ? 'REST' : '链接') + '）'}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
       {(() => {
         const isRest = settings?.saveMethod === 'rest';
         const downloadActive = isRest && saveImagesLocal;
@@ -548,38 +586,22 @@ export function App() {
         );
       })()}
 
-      <details className="zc-dest">
-        <summary>
+      {/* 仓库与保存文件夹由「保存到」下拉/设置页决定，这里直接显示路径预览 + 文件名 */}
+      <div className="zc-dest-open">
+        <div className="zc-dest-pathline" title={T.saveLocation}>
           <span className="zc-dest-icon">📁</span>
           <span className="zc-dest-path">
             {(clipFolder ? `${clipFolder}/` : '') + safeName(filename)}.md
           </span>
-          <span className="zc-dest-edit">{T.saveLocation}</span>
-        </summary>
-        <div className="zc-dest-body">
-          <div className="zc-grid2">
-            <div>
-              <label className="zc-label">{T.fieldVault}</label>
-              <input className="zc-input" value={vault} onChange={(e) => setVault(e.target.value)} />
-            </div>
-            <div>
-              <label className="zc-label">{T.fieldFolder}</label>
-              <input
-                className="zc-input"
-                value={folder}
-                onChange={(e) => setFolder(e.target.value)}
-              />
-            </div>
-          </div>
-          <label className="zc-label">{T.fieldFilename}</label>
-          <input
-            className="zc-input"
-            value={filename}
-            onChange={(e) => setFilename(e.target.value)}
-          />
-          <div className="zc-fieldhint">{T.filenameNote}</div>
         </div>
-      </details>
+        <label className="zc-label">{T.fieldFilename}</label>
+        <input
+          className="zc-input"
+          value={filename}
+          onChange={(e) => setFilename(e.target.value)}
+        />
+        <div className="zc-fieldhint">{T.filenameNote}</div>
+      </div>
 
       {settings?.saveMethod !== 'rest' && uriPreviewLength > URI_LENGTH_WARN && (
         <div className="zc-warn">⚠ {T.tooLongWarn}</div>

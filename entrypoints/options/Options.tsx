@@ -1,16 +1,17 @@
 import { useEffect, useState } from 'react';
 import { T } from '@/utils/strings';
-import { loadSettings, saveSettings } from '@/utils/storage';
+import { loadSettings, saveSettings, newProfileId } from '@/utils/storage';
 import { testRest } from '@/utils/rest';
-import { DEFAULT_SETTINGS, Settings } from '@/utils/types';
+import { DEFAULT_SETTINGS, Settings, VaultProfile } from '@/utils/types';
 
 type FieldKey = keyof Settings['frontmatterFields'];
 
 export function Options() {
   const [s, setS] = useState<Settings>(DEFAULT_SETTINGS);
   const [savedMsg, setSavedMsg] = useState('');
-  const [testMsg, setTestMsg] = useState('');
-  const [testing, setTesting] = useState(false);
+  const [testMsg, setTestMsg] = useState(''); // 测试连接结果文案
+  const [testId, setTestId] = useState(''); // 该结果属于哪张卡片
+  const [testingId, setTestingId] = useState(''); // 正在测试的卡片 id
 
   useEffect(() => {
     loadSettings().then(setS);
@@ -21,16 +22,56 @@ export function Options() {
     document.documentElement.dataset.theme = s.theme;
   }, [s.theme]);
 
-  async function handleTest() {
-    setTesting(true);
-    setTestMsg('');
-    const r = await testRest({ baseUrl: s.restBaseUrl, apiKey: s.restApiKey });
-    setTestMsg(r.msg);
-    setTesting(false);
-  }
-
   function update<K extends keyof Settings>(key: K, value: Settings[K]) {
     setS((prev) => ({ ...prev, [key]: value }));
+  }
+
+  // 仓库档为单一数据源：每张卡片直接编辑对应档
+  function updateProfile(id: string, patch: Partial<VaultProfile>) {
+    setS((prev) => ({
+      ...prev,
+      vaultProfiles: prev.vaultProfiles.map((p) => (p.id === id ? { ...p, ...patch } : p)),
+    }));
+  }
+
+  function setActiveProfile(id: string) {
+    setS((prev) => ({ ...prev, activeProfileId: id }));
+  }
+
+  function addProfile() {
+    setS((prev) => {
+      const id = newProfileId();
+      const np: VaultProfile = {
+        id,
+        vaultName: '',
+        saveMethod: 'uri',
+        restBaseUrl: DEFAULT_SETTINGS.restBaseUrl,
+        restApiKey: '',
+        defaultFolder: DEFAULT_SETTINGS.defaultFolder,
+      };
+      return { ...prev, vaultProfiles: [...prev.vaultProfiles, np], activeProfileId: id };
+    });
+  }
+
+  function removeProfile(id: string) {
+    setS((prev) => {
+      if (prev.vaultProfiles.length <= 1) return prev;
+      const remaining = prev.vaultProfiles.filter((p) => p.id !== id);
+      return {
+        ...prev,
+        vaultProfiles: remaining,
+        activeProfileId: prev.activeProfileId === id ? remaining[0].id : prev.activeProfileId,
+      };
+    });
+  }
+
+  async function testProfile(p: VaultProfile) {
+    setTestId(p.id);
+    setTestingId(p.id);
+    setTestMsg('');
+    const r = await testRest({ baseUrl: p.restBaseUrl, apiKey: p.restApiKey });
+    setTestMsg(r.msg);
+    setTestingId('');
   }
 
   function toggleField(key: FieldKey) {
@@ -64,8 +105,6 @@ export function Options() {
     setTimeout(() => setSavedMsg(''), 1800);
   }
 
-  const isRest = s.saveMethod === 'rest';
-
   return (
     <div className="zc-opt">
       <header className="zc-opt-head">
@@ -95,122 +134,10 @@ export function Options() {
       </div>
 
       <div className="zc-group">
-        <div className="zc-group-title">{T.settingsSaveMethod}</div>
-        <label className="zc-check">
-          <input
-            type="radio"
-            name="method"
-            checked={!isRest}
-            onChange={() => update('saveMethod', 'uri')}
-          />
-          {T.settingsMethodUri}
-        </label>
-        <label className="zc-check">
-          <input
-            type="radio"
-            name="method"
-            checked={isRest}
-            onChange={() => update('saveMethod', 'rest')}
-          />
-          {T.settingsMethodRest}
-        </label>
-
-        {isRest ? (
-          <>
-            <p className="zc-hint">{T.settingsRestGuide}</p>
-            <label className="zc-l">{T.settingsRestUrl}</label>
-            <input
-              className="zc-i"
-              value={s.restBaseUrl}
-              onChange={(e) => update('restBaseUrl', e.target.value)}
-            />
-            <p className="zc-hint">{T.settingsRestUrlHint}</p>
-            <label className="zc-l">{T.settingsRestKey}</label>
-            <input
-              className="zc-i"
-              type="password"
-              value={s.restApiKey}
-              onChange={(e) => update('restApiKey', e.target.value)}
-            />
-            <p className="zc-hint">{T.settingsRestKeyHint}</p>
-            <div className="zc-actions">
-              <button className="zc-btn zc-btn-ghost" onClick={handleTest} disabled={testing}>
-                {testing ? '…' : T.settingsRestTest}
-              </button>
-              {testMsg && <span className="zc-ok">{testMsg}</span>}
-            </div>
-          </>
-        ) : (
-          <>
-            <label className="zc-l">{T.settingsVault}</label>
-            <input
-              className="zc-i"
-              value={s.vaultName}
-              placeholder="例如 我的笔记"
-              onChange={(e) => update('vaultName', e.target.value)}
-            />
-            <p className="zc-hint">{T.settingsVaultHint}</p>
-          </>
-        )}
-      </div>
-
-      <div className="zc-group">
-        <div className="zc-group-title">{T.settingsGroupImages}</div>
-        <p className="zc-hint">{T.settingsImageIntro}</p>
-        {/* 两种图片处理方式：下载到本地 / 引用原网页链接（内部用 saveImagesLocal 布尔表示） */}
-        <label className={'zc-check' + (isRest ? '' : ' zc-disabled')}>
-          <input
-            type="radio"
-            name="imageMode"
-            checked={s.saveImagesLocal}
-            disabled={!isRest}
-            onChange={() => update('saveImagesLocal', true)}
-          />
-          {T.settingsImageDownload}
-        </label>
-        <p className="zc-hint">{T.settingsImageDownloadHint}</p>
-        <label className="zc-check">
-          <input
-            type="radio"
-            name="imageMode"
-            checked={!s.saveImagesLocal}
-            onChange={() => update('saveImagesLocal', false)}
-          />
-          {T.settingsImageReference}
-        </label>
-        <p className="zc-hint">{T.settingsImageReferenceHint}</p>
-        {!isRest && <p className="zc-hint">{T.settingsImageDownloadNeedRest}</p>}
-
-        {/* 附件文件夹仅在「下载到本地」且「每篇独立文件夹」关闭时有用 */}
-        {isRest && s.saveImagesLocal && !s.folderPerClip && (
-          <>
-            <label className="zc-l">{T.settingsAttachFolder}</label>
-            <input
-              className="zc-i"
-              value={s.attachmentsFolder}
-              onChange={(e) => update('attachmentsFolder', e.target.value)}
-            />
-            <p className="zc-hint">{T.settingsAttachFolderHint}</p>
-          </>
-        )}
-        {isRest && s.saveImagesLocal && s.folderPerClip && (
-          <p className="zc-hint">
-            当前图片随每篇文章存进它的独立文件夹。想把<b>所有图片集中到一个文件夹</b>？到下方「归档与命名」取消勾选「每篇独立文件夹」，这里就会出现附件文件夹设置。
-          </p>
-        )}
-      </div>
-
-      <div className="zc-group">
         <div className="zc-group-title">{T.settingsGroupArchive}</div>
-        <label className="zc-l">{T.settingsFolder}</label>
-        <input
-          className="zc-i"
-          value={s.defaultFolder}
-          onChange={(e) => update('defaultFolder', e.target.value)}
-        />
-        <p className="zc-hint">{T.settingsFolderHint}</p>
+        <p className="zc-hint">{T.settingsArchiveFolderMoved}</p>
 
-        <label className="zc-check zc-mt">
+        <label className="zc-check">
           <input
             type="checkbox"
             checked={s.folderPerClip}
@@ -218,7 +145,7 @@ export function Options() {
           />
           {T.settingsFolderPerClip}
         </label>
-        {s.folderPerClip && (
+        {s.folderPerClip ? (
           <>
             <label className="zc-l">{T.settingsFolderTpl}</label>
             <input
@@ -227,6 +154,16 @@ export function Options() {
               onChange={(e) => update('folderNameTemplate', e.target.value)}
             />
             <p className="zc-hint">{T.settingsFolderTplHint}</p>
+          </>
+        ) : (
+          <>
+            <label className="zc-l">{T.settingsAttachFolder}</label>
+            <input
+              className="zc-i"
+              value={s.attachmentsFolder}
+              onChange={(e) => update('attachmentsFolder', e.target.value)}
+            />
+            <p className="zc-hint">{T.settingsAttachFolderHint}</p>
           </>
         )}
 
@@ -320,6 +257,103 @@ export function Options() {
             <p className="zc-hint">{T.settingsCustomFieldsHint}</p>
           </>
         )}
+      </div>
+
+      <div className="zc-group">
+        <div className="zc-group-title">{T.settingsGroupVaults}</div>
+        <p className="zc-hint">{T.settingsVaultsHint}</p>
+        {s.vaultProfiles.map((p) => {
+          const pRest = p.saveMethod === 'rest';
+          const active = p.id === s.activeProfileId;
+          return (
+            <div className={'zc-vault-card' + (active ? ' on' : '')} key={p.id}>
+              <div className="zc-vault-head">
+                <input
+                  className="zc-i zc-vault-name"
+                  value={p.vaultName}
+                  placeholder={T.profileVaultPlaceholder}
+                  onChange={(e) => updateProfile(p.id, { vaultName: e.target.value })}
+                />
+                <button
+                  className={'zc-btn zc-btn-ghost zc-profile-active-btn' + (active ? ' on' : '')}
+                  onClick={() => setActiveProfile(p.id)}
+                >
+                  {active ? T.profileActive : T.profileSetActive}
+                </button>
+                <button
+                  className="zc-cf-del"
+                  title="删除"
+                  disabled={s.vaultProfiles.length <= 1}
+                  onClick={() => removeProfile(p.id)}
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="zc-vault-methods">
+                <label className="zc-check">
+                  <input
+                    type="radio"
+                    name={'m-' + p.id}
+                    checked={!pRest}
+                    onChange={() => updateProfile(p.id, { saveMethod: 'uri' })}
+                  />
+                  {T.settingsMethodUri}
+                </label>
+                <label className="zc-check">
+                  <input
+                    type="radio"
+                    name={'m-' + p.id}
+                    checked={pRest}
+                    onChange={() => updateProfile(p.id, { saveMethod: 'rest' })}
+                  />
+                  {T.settingsMethodRest}
+                </label>
+              </div>
+              {pRest ? (
+                <>
+                  <label className="zc-l">{T.settingsRestUrl}</label>
+                  <input
+                    className="zc-i"
+                    value={p.restBaseUrl}
+                    onChange={(e) => updateProfile(p.id, { restBaseUrl: e.target.value })}
+                  />
+                  <label className="zc-l">{T.settingsRestKey}</label>
+                  <input
+                    className="zc-i"
+                    type="password"
+                    value={p.restApiKey}
+                    onChange={(e) => updateProfile(p.id, { restApiKey: e.target.value })}
+                  />
+                  <div className="zc-actions">
+                    <button
+                      className="zc-btn zc-btn-ghost"
+                      onClick={() => testProfile(p)}
+                      disabled={testingId === p.id}
+                    >
+                      {testingId === p.id ? '…' : T.settingsRestTest}
+                    </button>
+                    {testId === p.id && testMsg && <span className="zc-ok">{testMsg}</span>}
+                  </div>
+                  <p className="zc-hint">{T.settingsRestKeyHint}</p>
+                </>
+              ) : (
+                <p className="zc-hint">{T.settingsMethodUriHint}</p>
+              )}
+              <label className="zc-l zc-mt">{T.settingsFolder}</label>
+              <input
+                className="zc-i"
+                value={p.defaultFolder}
+                placeholder="如 剪藏/"
+                onChange={(e) => updateProfile(p.id, { defaultFolder: e.target.value })}
+              />
+              <p className="zc-hint">{T.settingsFolderHint}</p>
+            </div>
+          );
+        })}
+        <button className="zc-cf-add" onClick={addProfile}>
+          {T.profileAdd}
+        </button>
+        <p className="zc-hint">{T.settingsVaultNameHint}</p>
       </div>
 
       <div className="zc-sticky-save">
