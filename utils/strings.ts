@@ -71,7 +71,7 @@ export const T = {
   settingsGroupVaults: '仓库（保存目标）',
   settingsVaultsHint:
     '每个仓库一张卡片：填仓库名 + 选保存方式 +（REST 的）地址和 Key。在使用界面下拉一键切换；标「当前」的是默认用的那个。',
-  profileVaultPlaceholder: '仓库名（如 兆基大脑）',
+  profileVaultPlaceholder: '仓库名（如 我的笔记）',
   profileSetActive: '设为当前',
   profileActive: '当前 ✓',
   profileAdd: '+ 新建仓库',

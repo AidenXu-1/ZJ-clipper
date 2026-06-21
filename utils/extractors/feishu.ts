@@ -426,13 +426,25 @@ function isGenericTitle(t: string): boolean {
  * 从页面的标题元素 .note-title 读真实文档标题（document.title 在后台标签页常停在
  * "飞书云文档" 占位，不可靠）。.note-title 里混有"分享/编辑"等按钮文字，去掉。
  */
+// 标题里可能混入的按钮文字（放在字符串里，避免中文进正则——内容脚本要求纯 ASCII）
+const TITLE_TAIL_WORDS = ['分享', '编辑', '更多', '复制链接', '收藏'];
+
 function feishuDocTitle(): string {
   const el = document.querySelector('.note-title');
   if (!el) return '';
   const clone = el.cloneNode(true) as HTMLElement;
   clone.querySelectorAll('button, a, svg, [role="button"]').forEach((n) => n.remove());
   let t = stripZeroWidth(clone.textContent || '').replace(/\s+/g, ' ').trim();
-  t = t.replace(/(分享|编辑|更多|复制链接|收藏)+$/g, '').trim(); // 去尾部按钮残留
+  // 反复去掉尾部的按钮残留词（用字符串 endsWith，不用中文正则）
+  for (let changed = true; changed; ) {
+    changed = false;
+    for (const w of TITLE_TAIL_WORDS) {
+      if (t.endsWith(w)) {
+        t = t.slice(0, -w.length).trim();
+        changed = true;
+      }
+    }
+  }
   return t;
 }
 
