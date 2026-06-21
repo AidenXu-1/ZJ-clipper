@@ -51,7 +51,7 @@ entrypoints/background.ts
 
 entrypoints/content.ts
   内容脚本壳层。
-  负责消息监听、网页高亮、诊断信息、blob 图片就地解析。
+  负责消息监听、网页高亮、诊断信息（含飞书图片布局/坐标/排布诊断）、blob 图片就地解析。
   正文提取委托给 utils/extractors 注册表。
 
 entrypoints/popup/
@@ -60,7 +60,8 @@ entrypoints/popup/
 
 entrypoints/options/
   设置页 React UI。
-  负责保存方式、REST 配置、主题、归档命名、本地图片、自定义 frontmatter 字段等设置。
+  负责主题、仓库配置档（每个仓库一张卡片：仓库名/保存方式/REST 配置/默认文件夹）、
+  归档命名、学习状态取值、自定义 frontmatter 字段等设置。图片下载/引用模式改在弹窗里选。
 
 utils/extractors/
   站点适配器。
@@ -71,7 +72,8 @@ utils/extract-core.ts
   包括 Defuddle 封装、Turndown 规则、Markdown 清洗、滚动抓取、日期/计数/标签解析等。
 
 utils/storage.ts
-  chrome.storage 设置读写和标签历史。
+  chrome.storage 设置读写。含「仓库配置档（vaultProfiles）」的读写与迁移：
+  档为单一数据源，当前生效档的配置镜像到顶层字段；API Key 与仓库档（含密钥）只存 local。
 
 utils/frontmatter.ts
   frontmatter 生成和 YAML 标量转义。
@@ -82,8 +84,15 @@ utils/obsidian.ts
 utils/rest.ts
   Obsidian Local REST API 写入、连接测试、文件存在检查、二进制附件写入。
 
+utils/hosts.ts
+  需登录鉴权才能取图的站点清单（飞书/Lark）。供两处共用：
+  引用模式下判定「该图必须下载」，以及后台下载时判定「该图请求要带 Cookie」。
+
 utils/images.ts
-  本地图片保存流水线。
+  本地图片保存流水线 + 图片双模式。
+  isUnreferenceable 判定引用模式下仍需下载的图（飞书/blob）；
+  processNoteImages 支持按 alt 里的 |宽 保留宽度；
+  inlineImageRowsToHtml 把「并排嵌入 + 斜体图注」转成 HTML 让图注居中显示在每张图下方。
 
 utils/messaging.ts
   内容脚本消息发送与按需注入重试。
@@ -91,6 +100,34 @@ utils/messaging.ts
 utils/highlighter.ts
   网页划词高亮、持久化和恢复。
 ```
+
+## 核心子系统（v3.0.0）
+
+### 仓库配置档（多仓库切换）
+
+- `Settings.vaultProfiles: VaultProfile[]` + `activeProfileId` 是单一数据源；每个档含 `vaultName / saveMethod / restBaseUrl / restApiKey / defaultFolder`。
+- 顶层的 `saveMethod / vaultName / restBaseUrl / restApiKey / defaultFolder` 是「当前生效档」的镜像，保存/打开逻辑直接读顶层，改动小。
+- `loadSettings` 加载后把生效档镜像到顶层；`saveSettings` 反向：顶层由生效档派生，不反写档。旧单套配置首次加载时自动迁移成一个档。
+- 弹窗顶部「保存到」下拉调用 `switchProfile`：把所选档拷到顶层 + 立即持久化。
+- 安全：`vaultProfiles`（含密钥）与 API Key 都只存 `chrome.storage.local`，不进 sync。
+
+### 图片处理双模式
+
+- 弹窗里二选一（`saveImagesLocal`）：下载到本地 / 引用链接。引用模式仍会下载「无法被引用」的图（飞书/Lark 鉴权图、blob:），判定在 `utils/images.ts` 的 `isUnreferenceable` + `utils/hosts.ts`。
+- 后台 `fetchImage` 只对 `isAuthGatedHost` 命中的站点带 Cookie（`credentials: 'include'`），公开图不带。
+- 「下载到本地」需 REST 方式；obsidian:// 方式写不了二进制。
+
+### 飞书并排图与图注
+
+- `utils/extractors/feishu.ts` 的 `groupInlineImages`：把「同一行连续多张图（中间只隔空行/百分比/图注）」合并成一行带 `|宽` 的嵌入，并保留图注；用「中间是否夹实质正文」区分「并排一组」与「各自单图」。
+- 折叠在标题下的内容（`.heading-children`）转标题时会保留，避免居中副标题被丢。
+- 标题取自 `.note-title` 元素（`document.title` 在后台标签页常是占位），去掉「分享/编辑」等按钮词——注意这些词放字符串数组，不能进正则（ASCII 约束）。
+- 图注居中显示：下载后由 `inlineImageRowsToHtml` 把「并排 ![[名|宽]] + 斜体图注行」转成 HTML 弹性布局，相对路径 src（仅 folderPerClip 同文件夹时）。
+
+### 学习状态字段
+
+- 「学习状态」是独立 frontmatter 字段（取值 = `unreadTag/learnedTag`，默认 未学习/已学习），不再放进 tags，避免被下游 Agent 重写关键词时冲掉。
+- 关键词不再由插件自动生成。
 
 ## 开发命令
 
@@ -236,9 +273,11 @@ Obsidian 是 `app://` 环境，视频 iframe 或嵌入链接不要使用协议�
 
 REST 模式依赖用户本机 Obsidian 的 Local REST API 插件。
 
-- 默认地址：`http://127.0.0.1:27123`
-- API Key 单独保存在 `chrome.storage.local`，普通设置保存在 `chrome.storage.sync`。不要把密钥重新并入整份同步设置。
+- 默认地址：`http://127.0.0.1:27123`（HTTP，需在插件高级设置里开启并可改端口；27124 是 HTTPS，扩展用不上）。
+- 多仓库：每个仓库各装一个 Local REST API、各占一个端口、各有自己的 Key（Key 是 per-vault 的）。仓库配置档里分别填各自的地址+Key。
+- API Key 与仓库配置档（含密钥）只保存在 `chrome.storage.local`，不进 `chrome.storage.sync`。不要把密钥并入整份同步设置。
 - 用户可能把 `Bearer xxx` 整行粘贴进来，`utils/rest.ts` 会自动去掉多余前缀。
+- 保存后「打开」用 `obsidian://open?vault=仓库名&file=路径`，所以每个档必须有正确的仓库名，否则打开会「未找到」。
 
 ### frontmatter
 
