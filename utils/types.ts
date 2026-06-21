@@ -57,6 +57,8 @@ export interface ClipProperties {
   modified: string;
   description: string;
   clipped: string;
+  /** 学习状态：独立字段（已学习/未学习），与 tags 分开，避免被下游 Agent 重写关键词时冲掉 */
+  learningStatus: string;
   tags: string[];
   /** 互动数据（来自页面，非用户编辑），写入 frontmatter */
   stats?: ClipStats;
@@ -65,6 +67,23 @@ export interface ClipProperties {
 /** 插件设置 */
 /** 保存方式：obsidian:// URI 或 Local REST API */
 export type SaveMethod = 'uri' | 'rest';
+
+/**
+ * 仓库配置档：一份完整的"保存目标"。可存多套，在使用界面一键切换。
+ * vaultName 同时用于保存后"打开"的跳转链接（两种方式都需要，避免打开时"未找到"）。
+ */
+export interface VaultProfile {
+  id: string;
+  /** Obsidian 仓库名：既是下拉显示名，又用于 uri 保存与两种方式的"打开"跳转 */
+  vaultName: string;
+  saveMethod: SaveMethod;
+  /** Local REST API 地址（rest 方式用） */
+  restBaseUrl: string;
+  /** Local REST API 的 API Key（仅存本地，不同步） */
+  restApiKey: string;
+  /** 默认保存文件夹（每个仓库各自的归档位置，如 "剪藏/"） */
+  defaultFolder: string;
+}
 
 /** 界面主题：跟随系统 / 浅色 / 深色 */
 export type ThemeMode = 'auto' | 'light' | 'dark';
@@ -84,7 +103,11 @@ export interface SiteTagRule {
 export interface Settings {
   /** 界面主题（弹窗+设置页） */
   theme: ThemeMode;
-  /** 保存方式 */
+  /** 多套仓库配置档（保存目标），用于一键切换；空则按下面的单套字段迁移生成 */
+  vaultProfiles: VaultProfile[];
+  /** 当前生效的仓库档 id */
+  activeProfileId: string;
+  /** 保存方式（= 当前生效档的镜像，保存/打开逻辑直接读它） */
   saveMethod: SaveMethod;
   /** 目标 Obsidian 仓库名（uri 方式用） */
   vaultName: string;
@@ -106,9 +129,9 @@ export interface Settings {
   filenameTemplate: string;
   /** 标签黑名单：抓到的页面标签若命中名单则丢弃（用户自定义，机械过滤，非 AI 判断） */
   tagBlocklist: string[];
-  /** 未勾选“本篇已学习”时自动添加的标签 */
+  /** 「学习状态」字段：未勾选「本篇已学习」时写入的值（如 未学习） */
   unreadTag: string;
-  /** 勾选“本篇已学习”时替换成的标签 */
+  /** 「学习状态」字段：勾选「本篇已学习」时写入的值（如 已学习） */
   learnedTag: string;
   /** 按网站域名自动添加标签 */
   siteTagRules: SiteTagRule[];
@@ -130,6 +153,8 @@ export interface Settings {
 
 export const DEFAULT_SETTINGS: Settings = {
   theme: 'auto',
+  vaultProfiles: [],
+  activeProfileId: '',
   saveMethod: 'uri',
   vaultName: '',
   restBaseUrl: 'http://127.0.0.1:27123',
@@ -141,7 +166,7 @@ export const DEFAULT_SETTINGS: Settings = {
   attachmentsFolder: 'attachments',
   filenameTemplate: '{{title}}',
   tagBlocklist: [],
-  unreadTag: 'unread',
+  unreadTag: '未学习',
   learnedTag: '已学习',
   siteTagRules: [{ domain: 'woshipm.com', tag: 'PM' }],
   includeFrontmatter: true,

@@ -196,6 +196,43 @@ body {
   margin: 4px 0;
 }
 
+.zc-check.zc-disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.zc-profile-active-btn {
+  white-space: nowrap;
+}
+.zc-profile-active-btn.on {
+  background: var(--accent);
+  color: var(--accent-fg);
+  border-color: var(--accent);
+}
+
+.zc-vault-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin: 8px 0;
+}
+.zc-vault-card.on {
+  border-color: var(--accent);
+}
+.zc-vault-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.zc-vault-name {
+  flex: 1;
+}
+.zc-vault-methods {
+  display: flex;
+  gap: 16px;
+  margin: 8px 0 4px;
+}
+
 .zc-fields {
   display: grid;
   grid-template-columns: 1fr 1fr;

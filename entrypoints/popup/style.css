@@ -355,6 +355,27 @@ body {
   background: var(--accent);
   color: var(--accent-fg);
 }
+.zc-toggle button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.zc-imgblock {
+  margin-top: 10px;
+}
+
+.zc-profilerow {
+  margin-top: 10px;
+}
+.zc-profile-select {
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg);
+  color: var(--fg);
+  padding: 4px 8px;
+  font-size: 12.5px;
+  max-width: 60%;
+}
 
 .zc-fullcap {
   border: 1px dashed var(--accent);
@@ -485,6 +506,21 @@ body {
 .zc-dest-body {
   padding: 0 10px 10px;
   border-top: 1px solid var(--border-soft);
+}
+
+/* 保存位置（直接展开，不折叠）：路径预览 + 文件名 */
+.zc-dest-open {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  padding: 8px 10px 10px;
+}
+.zc-dest-pathline {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 12px;
+  margin-bottom: 8px;
 }
 .zc-fieldhint {
   font-size: 11px;

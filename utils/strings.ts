@@ -9,6 +9,7 @@ export const T = {
   fieldFilename: '文件名',
   fieldVault: '目标仓库',
   saveLocation: '保存位置',
+  saveTo: '保存到',
   filenameNote: '磁盘上的 .md 文件名，默认同标题（改这里不影响笔记标题）',
   properties: '属性',
   useSelection: '使用选中文字',
@@ -37,10 +38,26 @@ export const T = {
   needVault: '请先在设置里填写 Obsidian 仓库名',
   needApiKey: '请先在设置里填写 Local REST API 的 API Key',
   tooLongWarn: '内容较长，通过 obsidian:// 传递可能被截断，建议后续启用本地 API 保存',
+  // popup —— 图片处理方式（与设置页同一开关，改动会同步回设置）
+  imageSection: '图片',
+  imageDownload: '📥 下载到本地',
+  imageReference: '🔗 引用链接',
+  imageDownloadHint: '图片下载进仓库，离线也能看，会占用本地空间',
+  imageReferenceHint:
+    '公开图片只引用链接、不占空间；飞书等需登录的图片会自动下载到本地以保证能显示。原网页删图/失效后被引用的图将无法预览。',
+  imageDownloadNeedRest: '“下载到本地”需在设置里把保存方式改为 Local REST API',
+  gatedImagesUriNote:
+    '（注意：部分需登录的图片如飞书无法通过链接显示，建议改用 Local REST API 保存方式）',
+  // 保存图片时的进度/结果文案
+  imagesSavedAll: (saved: number, total: number) => `图片 ${saved}/${total} 已保存`,
+  imagesSavedGated: (saved: number, total: number) =>
+    `${saved}/${total} 张需登录的图片已下载到本地（飞书等无法用链接预览），其余仍按链接引用`,
+  imagesSavedFail: (err: string) => `（失败：${err}）`,
   // options
   settingsTitle: '兆基clipper · 设置',
-  settingsGroupImages: '本地图片',
+  settingsGroupImages: '图片处理',
   settingsGroupArchive: '归档与命名',
+  settingsArchiveFolderMoved: '默认保存文件夹已移到每个仓库的卡片里（不同仓库各自设置）。下面是所有仓库通用的命名规则。',
   settingsGroupProps: '属性字段',
   settingsCustomFields: '自定义字段',
   settingsCustomFieldsHint: '给每篇笔记加固定属性，会写进 frontmatter。例：状态 / 未读、类型 / 文章',
@@ -51,6 +68,16 @@ export const T = {
   themeAuto: '跟随系统',
   themeLight: '浅色',
   themeDark: '深色',
+  settingsGroupVaults: '仓库（保存目标）',
+  settingsVaultsHint:
+    '每个仓库一张卡片：填仓库名 + 选保存方式 +（REST 的）地址和 Key。在使用界面下拉一键切换；标「当前」的是默认用的那个。',
+  profileVaultPlaceholder: '仓库名（如 我的笔记）',
+  profileSetActive: '设为当前',
+  profileActive: '当前 ✓',
+  profileAdd: '+ 新建仓库',
+  settingsMethodUriHint: '零配置，需装 Obsidian；靠上面的"仓库名"定位仓库。不能下载图片、超长会截断。',
+  settingsVaultNameHint:
+    '"仓库名"= Obsidian 左下角仓库切换器里看到的名称（也是含 .obsidian 的文件夹名）。用于"链接"方式保存、以及两种方式保存后"打开"跳转——必须填对，否则打开会"未找到"。',
   settingsSaveMethod: '保存方式',
   settingsMethodUri: 'obsidian:// 链接（零配置，需装 Obsidian）',
   settingsMethodRest: 'Local REST API（更稳，超长不截断）',
@@ -62,9 +89,14 @@ export const T = {
   settingsRestTest: '测试连接',
   settingsRestGuide:
     '使用前：在 Obsidian 安装并启用社区插件「Local REST API」，开启 HTTP 服务，复制 API Key 填入下方。',
-  settingsSaveImages: '保存图片到本地附件',
-  settingsSaveImagesHint:
-    '剪藏时把图片下载进仓库（自包含、离线可看），并能显示飞书等需登录的图片。仅 REST 方式可用。',
+  settingsImageIntro: '剪藏到笔记里的图片如何处理：',
+  settingsImageDownload: '下载到本地附件',
+  settingsImageDownloadHint:
+    '把图片下载进仓库（自包含、离线可看），并能显示飞书等需登录的图片。仅 Local REST API 方式可用。',
+  settingsImageReference: '引用原网页链接（不下载）',
+  settingsImageReferenceHint:
+    '公开图片保留原网页链接、Obsidian 按原规格预览、不占空间；飞书等需登录的图片会自动下载到本地（仅 REST 方式），否则无法显示。风险：原网页删除/失效/改版后，被引用的图片将无法显示。',
+  settingsImageDownloadNeedRest: '“下载到本地”需把上方保存方式改为 Local REST API。',
   settingsAttachFolder: '附件文件夹',
   settingsAttachFolderHint: '图片存放位置，如 attachments',
   settingsVault: 'Obsidian 仓库名',
@@ -79,10 +111,11 @@ export const T = {
   settingsTagBlock: '标签黑名单',
   settingsTagBlockHint:
     '抓页面自带标签时，命中名单的词会被丢弃（机械过滤，逗号分隔）。例：视频教程, 课程, 教程, vlog, 日常',
-  settingsAutoTags: '自动标签',
-  settingsUnreadTag: '默认未读标签',
-  settingsLearnedTag: '已学习标签',
-  settingsReadingTagHint: '打开剪存弹窗时默认添加未读标签；勾选“本篇已学习”后自动替换。',
+  settingsAutoTags: '学习状态',
+  settingsUnreadTag: '未学习显示为',
+  settingsLearnedTag: '已学习显示为',
+  settingsReadingTagHint:
+    '会写入独立的「学习状态」frontmatter 字段（不放进 tags，避免被下游 Agent 重写关键词时冲掉）。弹窗里勾选「本篇已学习」即在两者间切换。',
   settingsSiteTags: '网站标签规则',
   settingsSiteTagsHint: '域名会匹配其全部子域名。例如 woshipm.com / PM。',
   siteDomain: '域名，例如 woshipm.com',
