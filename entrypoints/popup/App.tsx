@@ -4,7 +4,7 @@ import { loadSettings, saveSettings } from '@/utils/storage';
 import { composeNote } from '@/utils/frontmatter';
 import { buildObsidianUri, buildOpenUri, URI_LENGTH_WARN } from '@/utils/obsidian';
 import { saveViaRest, fileExists } from '@/utils/rest';
-import { processNoteImages, isUnreferenceable } from '@/utils/images';
+import { processNoteImages, isUnreferenceable, inlineImageRowsToHtml } from '@/utils/images';
 import { sendToTab } from '@/utils/messaging';
 import {
   channelName,
@@ -310,6 +310,8 @@ export function App() {
           );
           await new Promise((res) => setTimeout(res, 900));
         }
+        // 并排图的图注：图片与笔记同文件夹时，转成 HTML 让图注居中显示在每张图正下方
+        note = inlineImageRowsToHtml(note, settings.folderPerClip);
         await saveViaRest(restCfg, filePath, note);
       } else {
         // obsidian:// 方式无法下载图片；引用模式下若含需登录的图（飞书等），提示用户改用 REST

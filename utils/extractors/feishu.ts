@@ -261,7 +261,11 @@ function normalizeFeishuHtml(html: string, boards: FeishuBoardCapture[] = []): s
       continue;
     }
     if (level && !/^H[1-6]$/.test(el.tagName)) {
-      replaceWithSemanticTag(el, `h${level}`);
+      // 飞书把"折叠/缩进在标题下"的内容嵌套进 .heading-children；转 h 标签只会取标题那一行，
+      // 会丢掉这些子块（如标题下的居中副标题）。先取出来，转完标题再接到其后继续规整。
+      const childrenZone = el.querySelector('.heading-children');
+      const heading = replaceWithSemanticTag(el, `h${level}`);
+      if (childrenZone) heading.after(childrenZone);
       continue;
     }
     if (kind === 'bullet') {
@@ -339,7 +343,120 @@ function cleanFeishuMarkdown(md: string): string {
   return s.replace(/\n{3,}/g, '\n\n').trim();
 }
 
+// ===== 并排图片：把飞书里并排的图，在 Obsidian 里也排成同一行 =====
+// 区分"并排一组"与"各自独立的单图"：飞书并排的图之间只隔着空行/百分比/图注（=图 alt），
+// 而单图被标题/列表/正文夹着。据此把"连续且只被这些'胶水'隔开的多张图"合并成一行带宽度的嵌入。
+// 仅命中并排组；单图、被正文隔开的图、其它内容都不动（普通文档基本不受影响）。
+
+const ROW_TARGET_WIDTH = 620; // 一行并排图的总宽(px)，分摊后约 300/张，常规阅读宽度内不换行
+
+/** 整行恰好是一张图 ![alt](url) 时返回其 alt/url，否则 null */
+function parseImgLine(line: string): { alt: string; url: string } | null {
+  const m = stripZeroWidth(line).trim().match(/^!\[([^\]]*)\]\(([^)\s]+)\)$/);
+  return m ? { alt: m[1].trim(), url: m[2] } : null;
+}
+
+function groupInlineImages(md: string): string {
+  const lines = md.split('\n');
+  const out: string[] = [];
+  let i = 0;
+  while (i < lines.length) {
+    const first = parseImgLine(lines[i]);
+    if (!first) {
+      out.push(lines[i]);
+      i++;
+      continue;
+    }
+    // 从这张图起，向下收集"只被空行/百分比/图注隔开"的连续图片
+    const group = [first];
+    const alts = new Set([first.alt]);
+    const captions: string[] = []; // 图注：合并后放到并排图下方保留，不丢
+    let j = i + 1;
+    while (j < lines.length) {
+      const t = stripZeroWidth(lines[j]).trim();
+      if (t === '' || /^\d{1,3}%$/.test(t)) {
+        j++;
+        continue; // 空行 / 宽度百分比 = 胶水
+      }
+      const img = parseImgLine(lines[j]);
+      if (img) {
+        group.push(img);
+        alts.add(img.alt);
+        j++;
+        continue;
+      }
+      if (alts.has(t)) {
+        captions.push(lines[j]);
+        j++;
+        continue; // 单独成行、且文字等于某张图 alt = 图注（飞书图注），保留
+      }
+      break; // 实质正文/标题/列表 → 这组到此为止
+    }
+    if (group.length >= 2) {
+      const w = Math.round(ROW_TARGET_WIDTH / group.length);
+      out.push(group.map((g) => `![${g.alt}|${w}](${g.url})`).join(' '));
+      // 图注：斜体、并排图正下方一行（保持可移植，不用 HTML）
+      const caps = captions.map((c) => stripZeroWidth(c).trim()).filter(Boolean);
+      if (caps.length) out.push(caps.map((c) => `*${c}*`).join('  '));
+      out.push(''); // 与后续正文留空行
+      i = j;
+    } else {
+      out.push(lines[i]);
+      i++;
+    }
+  }
+  return out.join('\n').replace(/\n{3,}/g, '\n\n');
+}
+
+// 飞书加载中标题占位（真实标题稍后才注入），命中视为"未就绪"
+const GENERIC_TITLES = new Set(['', 'docs', 'doc', 'untitled', '无标题', 'lark', '飞书', '飞书云文档']);
+
+/** 去零宽 + 去 " - 飞书云文档" 后缀，返回干净标题 */
+function cleanDocTitle(raw: string): string {
+  const s = stripZeroWidth(raw || '').trim();
+  const i = s.lastIndexOf('飞书云文档');
+  return (i > 0 ? s.slice(0, i).replace(/[\s\-|]+$/, '') : s).trim();
+}
+
+function isGenericTitle(t: string): boolean {
+  return GENERIC_TITLES.has(cleanDocTitle(t).toLowerCase());
+}
+
+/**
+ * 从页面的标题元素 .note-title 读真实文档标题（document.title 在后台标签页常停在
+ * "飞书云文档" 占位，不可靠）。.note-title 里混有"分享/编辑"等按钮文字，去掉。
+ */
+function feishuDocTitle(): string {
+  const el = document.querySelector('.note-title');
+  if (!el) return '';
+  const clone = el.cloneNode(true) as HTMLElement;
+  clone.querySelectorAll('button, a, svg, [role="button"]').forEach((n) => n.remove());
+  let t = stripZeroWidth(clone.textContent || '').replace(/\s+/g, ' ').trim();
+  t = t.replace(/(分享|编辑|更多|复制链接|收藏)+$/g, '').trim(); // 去尾部按钮残留
+  return t;
+}
+
+/** 等飞书真实标题就绪：占位时轮询 .note-title，最多 ~2s */
+async function waitForFeishuTitle(): Promise<void> {
+  for (let i = 0; i < 20; i++) {
+    const t = feishuDocTitle();
+    if (t && !GENERIC_TITLES.has(t.toLowerCase())) return;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+}
+
+/** 取真实文档标题：优先 .note-title 元素，再回退 parsed.title / document.title */
+function bestFeishuTitle(parsedTitle: string): string {
+  const fromEl = feishuDocTitle();
+  if (fromEl && !GENERIC_TITLES.has(fromEl.toLowerCase())) return fromEl;
+  for (const c of [cleanDocTitle(parsedTitle), cleanDocTitle(document.title)]) {
+    if (c && !GENERIC_TITLES.has(c.toLowerCase())) return c;
+  }
+  return fromEl || cleanDocTitle(parsedTitle) || cleanDocTitle(document.title) || '未命名';
+}
+
 async function extractFeishu(ctx: ExtractContext, sel: string): Promise<ExtractedPage> {
+  await waitForFeishuTitle(); // 标题未加载完时（显示 Docs）先等一下，避免文件名取到占位
   const boards = await captureFeishuBoards();
   const parsed = await parseWithSelector(ctx.url, sel);
   const defuddleMd = cleanFeishuMarkdown(feishuHtmlToMarkdown(parsed.content || '', boards));
@@ -353,10 +470,11 @@ async function extractFeishu(ctx: ExtractContext, sel: string): Promise<Extracte
     if (fullMd.length > defuddleMd.length) contentMarkdown = fullMd;
   }
 
-  // 标题：去零宽字符 + 去掉“ - 飞书云文档”等站点后缀（用字符串而非正则避免中文进正则）
-  let cleanTitle = stripZeroWidth(parsed.title || document.title || '未命名').trim();
-  const sufIdx = cleanTitle.lastIndexOf('飞书云文档');
-  if (sufIdx > 0) cleanTitle = cleanTitle.slice(0, sufIdx).replace(/[\s\-|]+$/, '').trim();
+  // 并排图片：把"同一行连续多张图"加宽度排成并排（仅命中并排行，普通内容不动）
+  contentMarkdown = groupInlineImages(contentMarkdown);
+
+  // 标题：优先非占位标题（避免抓到加载中的 "Docs"），并去 " - 飞书云文档" 后缀
+  const cleanTitle = bestFeishuTitle(parsed.title);
   const author = feishuAuthor() || parsed.author || '';
   const modified = feishuModified(cleanTitle);
 

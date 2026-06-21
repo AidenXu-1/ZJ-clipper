@@ -847,6 +847,49 @@ function diagnoseFeishu(): string {
       depth++;
     }
   }
+
+  // 标题来源排查（命名取到 Docs 的原因）
+  lines.push('--- 标题来源 ---');
+  lines.push(`document.title = "${document.title}"`);
+  for (const el of Array.from(document.querySelectorAll('[class*="title" i], h1, [data-block-type="page"]')).slice(0, 8)) {
+    const t = (el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 44);
+    if (t) lines.push(`  ${describeEl(el)} text="${t}"`);
+  }
+
+  // 正文顶部块结构：看副标题块为何被完整抓取漏掉（限定 editor 内，排除目录 catalogue）
+  const editor = document.querySelector('.editor-container');
+  lines.push('--- 正文顶部块（editor 内前 14 个 data-block-id 块）---');
+  if (editor) {
+    for (const b of Array.from(editor.querySelectorAll('[data-block-id]')).slice(0, 14)) {
+      const bt = b.getAttribute('data-block-type') || '';
+      const leaf = b.querySelector('[data-block-id]') ? '非叶' : '叶';
+      const txt = stripZeroWidth(b.textContent || '').replace(/\s+/g, '').slice(0, 22);
+      lines.push(`  ${describeEl(b)} type=${bt} ${leaf} text="${txt}"`);
+    }
+  } else {
+    lines.push('  (无 editor-container)');
+  }
+
+  // 副标题（完整抓取丢掉的那行）正文元素链：限定 editor 内查找，排除目录 TOC
+  lines.push('--- 正文副标题"抖音搜索场景"元素链 ---');
+  const subEl = editor
+    ? Array.from(editor.querySelectorAll('*')).find(
+        (el) => el.childElementCount === 0 && (el.textContent || '').includes('抖音搜索场景'),
+      )
+    : null;
+  if (subEl) {
+    let cur: Element | null = subEl;
+    let d = 0;
+    while (cur && d < 9) {
+      const bid = cur.getAttribute('data-block-id') || cur.getAttribute('data-record-id') || '';
+      const bt = cur.getAttribute('data-block-type') || '';
+      lines.push(`  ↑${d} ${describeEl(cur)} block-id=${bid ? '有' : '无'}${bt ? ` type=${bt}` : ''}`);
+      cur = cur.parentElement;
+      d++;
+    }
+  } else {
+    lines.push('  (editor 内未找到)');
+  }
   return lines.join('\n');
 }
 
@@ -874,6 +917,20 @@ async function diagnoseFull(): Promise<string> {
     lines.push(md.slice(0, 800));
     lines.push('--- 正文Markdown 末 200 字 ---');
     lines.push(md.slice(-200));
+    // 每张图在 markdown 中的排布：看彼此是否相邻（前/后是不是紧挨着另一张图），·=空白
+    lines.push('--- 正文图片在 markdown 中的排布（前/后各取 24 字，·=空白）---');
+    const RE = /!\[([^\]]*)\]\(([^)\s]+)\)/g;
+    let mm: RegExpExecArray | null;
+    let n = 0;
+    while ((mm = RE.exec(md))) {
+      const key = (mm[2].match(/mount_node_token=([^&]+)/) || [])[1] || mm[2].slice(-18);
+      const before = md.slice(Math.max(0, mm.index - 24), mm.index).replace(/\s/g, '·');
+      const after = md
+        .slice(mm.index + mm[0].length, mm.index + mm[0].length + 24)
+        .replace(/\s/g, '·');
+      lines.push(`  [图${n++}] key=${key} alt="${mm[1]}"`);
+      lines.push(`        前="${before}" 后="${after}"`);
+    }
   } catch (e) {
     lines.push(`提取失败: ${e instanceof Error ? e.message : String(e)}`);
   }

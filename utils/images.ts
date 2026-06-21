@@ -43,6 +43,16 @@ function isVideoEmbed(u: string): boolean {
   return /(youtube\.com|youtu\.be|player\.bilibili\.com|bilibili\.com\/video|vimeo\.com)/.test(u);
 }
 
+// 并排图片在 alt 末尾带 Obsidian 原生宽度（如 "团购搜索|341" / "图|341x200"）。
+// 下载改写成 ![[名|宽]] 时要保留，文件名里则要去掉。
+function parseAltWidth(alt: string): string {
+  const m = (alt || '').match(/\|(\d+(?:x\d+)?)\s*$/);
+  return m ? m[1] : '';
+}
+function stripAltWidth(alt: string): string {
+  return (alt || '').replace(/\|\d+(?:x\d+)?\s*$/, '');
+}
+
 /**
  * 该图片地址能否被 Obsidian 直接按链接预览。
  * 返回 true 表示「引用模式」下也必须下载到本地，否则裂图：
@@ -132,7 +142,7 @@ export async function processNoteImages(
       mime = resp.mime;
     }
     const seq = String(i + 1).padStart(pad, '0');
-    const name = `${base}-${seq}${altFragment(alt)}.${mimeExt(mime)}`;
+    const name = `${base}-${seq}${altFragment(stripAltWidth(alt))}.${mimeExt(mime)}`;
     try {
       await putBinary(restCfg, `${folder}/${name}`, base64ToBytes(base64), mime);
       map.set(url, name);
@@ -142,10 +152,70 @@ export async function processNoteImages(
   }
 
   const newNote = map.size
-    ? note.replace(IMG_RE, (full, _alt, url) => {
+    ? note.replace(IMG_RE, (full, alt, url) => {
         const name = map.get(url);
-        return name ? `![[${name}]]` : full;
+        if (!name) return full;
+        const w = parseAltWidth(alt); // 并排图保留宽度：![[名|宽]]
+        return w ? `![[${name}|${w}]]` : `![[${name}]]`;
       })
     : note;
   return { note: newNote, saved: map.size, total: unique.length, lastError };
+}
+
+// ===== 并排图的「每图下方居中图注」：把 markdown 嵌入行转成 HTML 弹性布局 =====
+// 触发条件：一行有 2+ 张本地嵌入 ![[名|宽]]，且紧随一行斜体图注 *a*  *b*。
+// 仅当图片与笔记同文件夹（folderPerClip）时用相对路径 src，可移植、不依赖绝对路径。
+const EMBED_ROW = /^(?:!\[\[[^\]]+\]\]\s*)+$/;
+const EMBED_ONE = /!\[\[([^\]|]+?)(?:\|\d+)?\]\]/g;
+const CAPTION_ROW = /^(?:\*[^*]+\*\s*)+$/;
+const CAPTION_ONE = /\*([^*]+)\*/g;
+
+function buildHtmlImageRow(names: string[], caps: string[]): string {
+  const width = Math.max(1, Math.floor(100 / names.length) - 2);
+  const items = names
+    .map((name, idx) => {
+      const src = name.replace(/ /g, '%20'); // 相对路径，仅转义空格（中文可原样）
+      const cap = (caps[idx] || '').trim();
+      const capDiv = cap
+        ? `<div style="font-weight:bold;font-size:12.5px;line-height:1.3;margin-top:4px;">${cap}</div>`
+        : '';
+      return `<div style="width:${width}%;text-align:center;"><img src="${src}" style="width:100%;"/>${capDiv}</div>`;
+    })
+    .join('');
+  return `<div style="display:flex;flex-wrap:wrap;gap:10px;">${items}</div>`;
+}
+
+/**
+ * 把「并排嵌入行 + 斜体图注行」转成 HTML，使图注居中显示在每张图正下方（可移植）。
+ * coLocated=false（图片与笔记不在同一文件夹）时原样返回，避免相对路径失效。
+ */
+export function inlineImageRowsToHtml(note: string, coLocated: boolean): string {
+  if (!coLocated) return note;
+  const lines = note.split('\n');
+  const out: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (EMBED_ROW.test(line)) {
+      const names: string[] = [];
+      let m: RegExpExecArray | null;
+      EMBED_ONE.lastIndex = 0;
+      while ((m = EMBED_ONE.exec(line))) names.push(m[1].trim());
+      if (names.length >= 2) {
+        let k = i + 1;
+        while (k < lines.length && lines[k].trim() === '') k++;
+        const capLine = k < lines.length ? lines[k].trim() : '';
+        if (CAPTION_ROW.test(capLine)) {
+          const caps: string[] = [];
+          let c: RegExpExecArray | null;
+          CAPTION_ONE.lastIndex = 0;
+          while ((c = CAPTION_ONE.exec(capLine))) caps.push(c[1]);
+          out.push(buildHtmlImageRow(names, caps));
+          i = k; // 吞掉图注行
+          continue;
+        }
+      }
+    }
+    out.push(lines[i]);
+  }
+  return out.join('\n');
 }
