@@ -337,6 +337,24 @@ export function findScroller(): HTMLElement {
     (document.scrollingElement as HTMLElement) || document.documentElement;
   let bestScore = best.scrollHeight - best.clientHeight;
   for (const el of Array.from(document.querySelectorAll<HTMLElement>('*'))) {
+    if (
+      el.closest(
+        [
+          'pre',
+          'code',
+          '.docx-code-block',
+          '.code-block',
+          '.ace_editor',
+          '.cm-editor',
+          '.monaco-editor',
+          '[data-block-type="code"]',
+          '[data-block-type="code_block"]',
+          '[data-block-type="codeblock"]',
+        ].join(', '),
+      )
+    ) {
+      continue;
+    }
     if (el.clientHeight < 200) continue;
     const oy = getComputedStyle(el).overflowY;
     if (oy !== 'auto' && oy !== 'scroll' && oy !== 'overlay') continue;
