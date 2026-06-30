@@ -20,8 +20,27 @@ function feishuContentSelector(): string | null {
   return null;
 }
 
+function isBroadSelector(sel: string): boolean {
+  const s = (sel || '').trim().toLowerCase();
+  return !s || s === 'html' || s === 'body' || s.includes('body#') || s.includes('html.');
+}
+
+function scopedFeishuSelector(fallback = ''): string {
+  const exact = feishuContentSelector();
+  if (exact) return exact;
+  return isBroadSelector(fallback) ? '' : fallback;
+}
+
 // 飞书正文里仍可能混入的噪声行（评论/点赞/工具条/占位等）——用字符串集合，避免中文进正则
 const FEISHU_JUNK = new Set([
+  '飞书云文档',
+  '互联网公开',
+  '搜索',
+  '问问知识库',
+  '目录',
+  '取消',
+  '确认',
+  '编辑封面',
   '附件不支持打印',
   '加载中...',
   '跳转至首条评论',
@@ -138,6 +157,188 @@ function replaceWithSemanticTag(el: Element, tag: string, preserveContainer = fa
   while (source.firstChild) out.appendChild(source.firstChild);
   el.replaceWith(out);
   return out;
+}
+
+function htmlEscape(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function feishuInlineHtml(node: Node): string {
+  if (node.nodeType === Node.TEXT_NODE) return htmlEscape(node.textContent || '');
+  if (node.nodeType !== Node.ELEMENT_NODE) return '';
+
+  const el = node as HTMLElement;
+  if (el.matches('.docx-block-zero-space, [data-zero-space="true"]')) return '';
+  const tag = el.tagName;
+  if (tag === 'BR') return '<br>';
+  if (tag === 'IMG') {
+    const src = el.getAttribute('data-src') || el.getAttribute('src') || '';
+    if (!src) return '';
+    const alt = el.getAttribute('alt') || '';
+    return `<img src="${htmlEscape(src)}" alt="${htmlEscape(alt)}">`;
+  }
+
+  const inner = Array.from(el.childNodes).map(feishuInlineHtml).join('');
+  if (!inner.trim()) return '';
+
+  const style = (el.getAttribute('style') || '').toLowerCase();
+  const cls = (el.className || '').toLowerCase();
+  const bg = (style.match(/background(?:-color)?\s*:\s*([^;]+)/) || [])[1] || '';
+  const highlighted =
+    (!!bg &&
+      !/transparent|inherit|initial|unset|none/.test(bg) &&
+      !/rgba\([^)]*,\s*0(?:\.0+)?\s*\)/.test(bg)) ||
+    /highlight|text-background|bg-color/.test(cls) ||
+    !!el.getAttribute('data-background-color') ||
+    tag === 'MARK';
+  const bold = tag === 'STRONG' || tag === 'B' || /font-weight\s*:\s*(bold|[6-9]00)/.test(style);
+  const italic = tag === 'EM' || tag === 'I' || /font-style\s*:\s*italic/.test(style);
+  const code = tag === 'CODE';
+
+  let out = inner;
+  if (code) out = `<code>${out}</code>`;
+  if (bold) out = `<strong>${out}</strong>`;
+  if (italic) out = `<em>${out}</em>`;
+  if (highlighted) out = `<mark>${out}</mark>`;
+  return out;
+}
+
+function feishuTableCellHtml(cell: Element): string {
+  const lines = outermostElements(Array.from(cell.querySelectorAll('.ace-line')));
+  const parts = lines.length
+    ? lines.map((line) => Array.from(line.childNodes).map(feishuInlineHtml).join('').trim())
+    : [Array.from(cell.childNodes).map(feishuInlineHtml).join('').trim()];
+  return parts.filter(Boolean).join('<br>');
+}
+
+function readTableColumnWidths(table: HTMLTableElement): number[] {
+  const cols = Array.from(table.querySelectorAll('col'))
+    .map((col) => parseInt(col.getAttribute('width') || '', 10))
+    .filter((n) => Number.isFinite(n) && n > 0);
+  if (cols.length) return cols;
+
+  const grid = table.querySelector('tr')?.getAttribute('style') || '';
+  const m = grid.match(/grid-template-columns\s*:\s*([^;]+)/);
+  if (!m) return [];
+  return m[1]
+    .split(/\s+/)
+    .map((part) => parseInt(part, 10))
+    .filter((n) => Number.isFinite(n) && n > 0);
+}
+
+function appendSemanticTableRows(
+  doc: Document,
+  dest: Element,
+  rows: HTMLTableRowElement[],
+  header: boolean,
+): void {
+  for (const row of rows) {
+    const outRow = doc.createElement('tr');
+    for (const cell of Array.from(row.children).filter((c) => /^T[HD]$/.test(c.tagName))) {
+      const outCell = doc.createElement(header ? 'th' : 'td');
+      const rowspan = cell.getAttribute('rowspan');
+      const colspan = cell.getAttribute('colspan');
+      if (rowspan && rowspan !== '1') outCell.setAttribute('rowspan', rowspan);
+      if (colspan && colspan !== '1') outCell.setAttribute('colspan', colspan);
+      outCell.setAttribute(
+        'style',
+        'border:1px solid var(--background-modifier-border);padding:6px 8px;vertical-align:top;word-break:break-word;white-space:normal;',
+      );
+      outCell.innerHTML = feishuTableCellHtml(cell);
+      outRow.appendChild(outCell);
+    }
+    if (outRow.children.length) dest.appendChild(outRow);
+  }
+}
+
+function buildSemanticFeishuTable(
+  doc: Document,
+  headerRows: HTMLTableRowElement[],
+  bodyRows: HTMLTableRowElement[],
+  widths: number[],
+): HTMLTableElement | null {
+  if (!headerRows.length && !bodyRows.length) return null;
+  const table = doc.createElement('table');
+  table.setAttribute('data-zhaoji-wide-table', 'true');
+  table.setAttribute('width', '100%');
+  table.setAttribute('cellspacing', '0');
+  table.setAttribute(
+    'style',
+    'width:100%;min-width:100%;border-collapse:collapse;table-layout:fixed;',
+  );
+
+  if (widths.length) {
+    const total = widths.reduce((sum, n) => sum + n, 0);
+    const colgroup = doc.createElement('colgroup');
+    for (const width of widths) {
+      const col = doc.createElement('col');
+      col.setAttribute('style', `width:${((width / total) * 100).toFixed(2)}%;`);
+      colgroup.appendChild(col);
+    }
+    table.appendChild(colgroup);
+  }
+
+  if (headerRows.length) {
+    const thead = doc.createElement('thead');
+    appendSemanticTableRows(doc, thead, headerRows, true);
+    if (thead.children.length) table.appendChild(thead);
+  }
+  if (bodyRows.length) {
+    const tbody = doc.createElement('tbody');
+    appendSemanticTableRows(doc, tbody, bodyRows, false);
+    if (tbody.children.length) table.appendChild(tbody);
+  }
+  return table;
+}
+
+function tableRowText(row: HTMLTableRowElement): string {
+  return Array.from(row.children)
+    .filter((cell) => /^T[HD]$/.test(cell.tagName))
+    .map((cell) => stripZeroWidth(cell.textContent || '').replace(/\s+/g, ' ').trim())
+    .join('\t');
+}
+
+function normalizeFeishuTables(doc: Document, root: Element): void {
+  const tables = outermostElements(Array.from(root.querySelectorAll('table'))) as HTMLTableElement[];
+  const consumed = new Set<HTMLTableElement>();
+
+  for (const [index, table] of tables.entries()) {
+    if (!table.isConnected || consumed.has(table)) continue;
+    const isStickyHeader = table.classList.contains('sticky-row-wrapper');
+    const nextTable =
+      isStickyHeader && tables[index + 1]?.isConnected && !consumed.has(tables[index + 1])
+        ? tables[index + 1]
+        : null;
+
+    const headerSource = isStickyHeader ? table : null;
+    const bodySource = nextTable || table;
+    const headerRows = headerSource
+      ? Array.from(headerSource.querySelectorAll('tr')) as HTMLTableRowElement[]
+      : [];
+    let bodyRows = Array.from(bodySource.querySelectorAll('tr')) as HTMLTableRowElement[];
+    // Feishu renders the first table row twice: once as a sticky header clone and
+    // once as the real first row. Keep the sticky row as <thead>, drop the clone
+    // from <tbody> so Obsidian does not show a fake blank row/gap.
+    if (headerRows.length && bodyRows.length && tableRowText(headerRows[0]) === tableRowText(bodyRows[0])) {
+      bodyRows = bodyRows.slice(1);
+    }
+    const widths = readTableColumnWidths(bodySource).length
+      ? readTableColumnWidths(bodySource)
+      : readTableColumnWidths(table);
+    const semantic = buildSemanticFeishuTable(doc, headerRows, bodyRows, widths);
+    if (!semantic) continue;
+
+    table.replaceWith(semantic);
+    consumed.add(table);
+    if (nextTable) {
+      nextTable.remove();
+      consumed.add(nextTable);
+    }
+  }
 }
 
 const FEISHU_CODE_BLOCK_SELECTORS = [
@@ -388,6 +589,22 @@ function collectVisibleCodeLines(scope: Element): Array<{ y: number; text: strin
   }
   const text = feishuCodeText(scope);
   return text ? [{ y: 0, text, key: text }] : [];
+}
+
+function hasScrollableVisibleCodeBlock(): boolean {
+  const hosts = outermostElements(
+    Array.from(document.querySelectorAll(FEISHU_CODE_BLOCK_SELECTORS.join(', '))).map(feishuCodeHost),
+  ) as HTMLElement[];
+  for (const host of hosts) {
+    const scroller =
+      (host.matches('.code-block-content, .ace_scroller, .cm-scroller, .monaco-scrollable-element')
+        ? host
+        : host.querySelector<HTMLElement>(
+            '.code-block-content, .ace_scroller, .cm-scroller, .monaco-scrollable-element',
+          )) || host;
+    if (scroller.scrollHeight > scroller.clientHeight + 8) return true;
+  }
+  return false;
 }
 
 function isCodeCopyControl(el: HTMLElement): boolean {
@@ -666,6 +883,8 @@ function normalizeFeishuHtml(
     }
   }
 
+  normalizeFeishuTables(doc, root);
+
   // 先处理外层块；替换后原子节点会脱离文档，避免同一块被重复规整。
   const blocks = Array.from(root.querySelectorAll('[data-block-type]'));
   for (const el of blocks) {
@@ -863,7 +1082,7 @@ function isGenericTitle(t: string): boolean {
 const TITLE_TAIL_WORDS = ['分享', '编辑', '更多', '复制链接', '收藏'];
 
 function feishuDocTitle(): string {
-  const el = document.querySelector('.note-title');
+  const el = document.querySelector('.wiki-suite-title, .note-title__input-container, .note-title');
   if (!el) return '';
   const clone = el.cloneNode(true) as HTMLElement;
   clone.querySelectorAll('button, a, svg, [role="button"]').forEach((n) => n.remove());
@@ -892,25 +1111,33 @@ async function waitForFeishuTitle(): Promise<void> {
 
 /** 取真实文档标题：优先 .note-title 元素，再回退 parsed.title / document.title */
 function bestFeishuTitle(parsedTitle: string): string {
-  const fromEl = feishuDocTitle();
-  if (fromEl && !GENERIC_TITLES.has(fromEl.toLowerCase())) return fromEl;
-  for (const c of [cleanDocTitle(parsedTitle), cleanDocTitle(document.title)]) {
+  const fromEl = cleanDocTitle(feishuDocTitle());
+  const fromDocument = cleanDocTitle(document.title);
+  const fromParsed = cleanDocTitle(parsedTitle);
+  const suspicious =
+    fromEl.length > 120 ||
+    fromEl.includes('最近修改') ||
+    (!!fromDocument && fromEl.length > fromDocument.length * 1.8);
+  if (fromEl && !suspicious && !GENERIC_TITLES.has(fromEl.toLowerCase())) return fromEl;
+  for (const c of [fromDocument, fromParsed, fromEl]) {
     if (c && !GENERIC_TITLES.has(c.toLowerCase())) return c;
   }
-  return fromEl || cleanDocTitle(parsedTitle) || cleanDocTitle(document.title) || '未命名';
+  return fromEl || fromParsed || fromDocument || '未命名';
 }
 
 async function extractFeishu(ctx: ExtractContext, sel: string): Promise<ExtractedPage> {
   await waitForFeishuTitle(); // 标题未加载完时（显示 Docs）先等一下，避免文件名取到占位
+  const scopeSelector = scopedFeishuSelector(sel);
   const boards = ctx.fullCapture ? await captureFeishuBoards() : [];
-  const codes = ctx.fullCapture ? await captureFeishuCodes() : [];
-  const parsed = await parseWithSelector(ctx.url, sel);
+  const needsCodeCapture = ctx.fullCapture && hasScrollableVisibleCodeBlock();
+  const codes = needsCodeCapture ? await captureFeishuCodes() : [];
+  const parsed = await parseWithSelector(ctx.url, scopeSelector || sel);
   const defuddleMd = cleanFeishuMarkdown(feishuHtmlToMarkdown(parsed.content || '', boards, codes));
 
   // 完整抓取：把滚动收集“限定在正文容器内”，排除目录/导航/侧栏/通知等
   let contentMarkdown = defuddleMd;
   if (ctx.fullCapture) {
-    const scope = sel || parsed.debug?.contentSelector;
+    const scope = scopeSelector || scopedFeishuSelector(parsed.debug?.contentSelector || '');
     const fullHtml = await captureFullContent(scope, '[data-block-id], [data-record-id]');
     const fullMd = cleanFeishuMarkdown(feishuHtmlToMarkdown(fullHtml, boards, codes));
     // Feishu's Defuddle result often includes comments, recommendations, and

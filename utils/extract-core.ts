@@ -186,6 +186,19 @@ turndown.addRule('zhaojiClipperVideo', {
   },
 });
 
+// 飞书表格先在站点适配器里规整为干净 HTML。这里保留 HTML 表格，
+// 避免 GFM Markdown 表格丢失宽度信息，导致 Obsidian 里被挤成窄列。
+turndown.addRule('zhaojiClipperWideTable', {
+  filter: (node) =>
+    node.nodeName === 'TABLE' &&
+    (node as HTMLElement).getAttribute('data-zhaoji-wide-table') === 'true',
+  replacement: (_content, node) => {
+    const table = node as HTMLElement;
+    table.removeAttribute('data-zhaoji-wide-table');
+    return `\n\n${table.outerHTML}\n\n`;
+  },
+});
+
 export function htmlToMarkdown(html: string): string {
   if (!html?.trim()) return '';
   return turndown

@@ -72,10 +72,11 @@ export async function loadSettings(): Promise<Settings> {
     ];
     merged.activeProfileId = id;
   } else {
-    // 旧仓库档可能没有 defaultFolder（功能上线前建的），补默认值
+    // 旧仓库档可能没有 defaultFolder（功能上线前建的），补默认值；飞书档补默认数据中心
     merged.vaultProfiles = merged.vaultProfiles.map((p) => ({
       ...p,
       defaultFolder: p.defaultFolder ?? merged.defaultFolder ?? DEFAULT_SETTINGS.defaultFolder,
+      ...(p.saveMethod === 'feishu' && !p.feishuDomain ? { feishuDomain: 'feishu.cn' as const } : {}),
     }));
     if (!merged.vaultProfiles.some((p) => p.id === merged.activeProfileId)) {
       merged.activeProfileId = merged.vaultProfiles[0].id;

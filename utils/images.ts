@@ -162,6 +162,132 @@ export async function processNoteImages(
   return { note: newNote, saved: map.size, total: unique.length, lastError };
 }
 
+// ===== 飞书图片辅助（预留给未来的文档块写入方案，当前 Markdown 导入链路未接入）=====
+// 收集正文里飞书服务端抓不到的图（飞书鉴权图/blob），供另行上传。
+// 公网 http(s) 图保留 ![](url) 内联（飞书导入时服务端自行抓取）；鉴权/blob 图从正文移除、
+// 取回字节交给上层追加进飞书文档。移除而非保留是为了避免导入时产生裂图。
+export interface GatedImage {
+  alt: string;
+  base64: string;
+  mime: string;
+}
+
+export interface GatedImagesResult {
+  note: string;
+  images: GatedImage[];
+  lastError: string;
+}
+
+export async function collectGatedImages(
+  note: string,
+  inlineImages: Array<{ url: string; base64: string; mime: string }> = [],
+  onProgress?: (done: number, total: number) => void,
+): Promise<GatedImagesResult> {
+  const inlineMap = new Map(inlineImages.map((i) => [i.url, i]));
+  // 按出现顺序收集需上传的图（去重、跳过视频嵌入），保留首个 alt
+  const items: Array<{ url: string; alt: string }> = [];
+  const seen = new Set<string>();
+  let m: RegExpExecArray | null;
+  IMG_RE.lastIndex = 0;
+  while ((m = IMG_RE.exec(note))) {
+    const alt = m[1];
+    const url = m[2];
+    if (isVideoEmbed(url) || seen.has(url)) continue;
+    seen.add(url);
+    if (!isUnreferenceable(url)) continue; // 公网图留在正文内联，飞书自行抓取
+    items.push({ url, alt });
+  }
+  const unique = items.slice(0, 40);
+
+  const gotBytes = new Map<string, GatedImage>(); // url -> 字节
+  let lastError = '';
+  for (let i = 0; i < unique.length; i++) {
+    const { url, alt } = unique[i];
+    onProgress?.(i + 1, unique.length);
+    let base64 = '';
+    let mime = '';
+    if (url.startsWith('blob:')) {
+      const inl = inlineMap.get(url);
+      if (!inl) {
+        lastError = 'blob 图未解析';
+        continue;
+      }
+      base64 = inl.base64;
+      mime = inl.mime;
+    } else {
+      const resp = (await chrome.runtime.sendMessage({
+        type: 'ZHAOJI_CLIPPER_FETCH_IMAGE',
+        url,
+      })) as FetchImageResponse;
+      if (!resp?.ok) {
+        lastError = resp?.error || '下载失败';
+        continue;
+      }
+      base64 = resp.base64;
+      mime = resp.mime;
+    }
+    gotBytes.set(url, { alt: stripAltWidth(alt), base64, mime });
+  }
+
+  // 从正文移除已收集（及收集失败）的鉴权/blob 图链接，避免导入裂图
+  const gatedUrls = new Set(unique.map((u) => u.url));
+  const newNote = note.replace(IMG_RE, (full, _alt, url) => (gatedUrls.has(url) ? '' : full));
+  return { note: newNote, images: [...gotBytes.values()], lastError };
+}
+
+// 飞书文档块写入预留：按 url 取回正文里全部图片的字节。当前 saveToFeishu 走
+// Markdown 导入，尚未按文档块逐张插入图片。
+export async function collectAllImages(
+  note: string,
+  inlineImages: Array<{ url: string; base64: string; mime: string }> = [],
+  onProgress?: (done: number, total: number) => void,
+): Promise<{ images: GatedImage2[]; lastError: string }> {
+  const inlineMap = new Map(inlineImages.map((i) => [i.url, i]));
+  const urls: string[] = [];
+  const seen = new Set<string>();
+  let m: RegExpExecArray | null;
+  IMG_RE.lastIndex = 0;
+  while ((m = IMG_RE.exec(note))) {
+    const url = m[2];
+    if (isVideoEmbed(url) || seen.has(url)) continue;
+    seen.add(url);
+    urls.push(url);
+  }
+  const unique = urls.slice(0, 40);
+  const out: GatedImage2[] = [];
+  let lastError = '';
+  for (let i = 0; i < unique.length; i++) {
+    const url = unique[i];
+    onProgress?.(i + 1, unique.length);
+    if (url.startsWith('blob:')) {
+      const inl = inlineMap.get(url);
+      if (!inl) {
+        lastError = 'blob 图未解析';
+        continue;
+      }
+      out.push({ url, base64: inl.base64, mime: inl.mime });
+    } else {
+      const resp = (await chrome.runtime.sendMessage({
+        type: 'ZHAOJI_CLIPPER_FETCH_IMAGE',
+        url,
+      })) as FetchImageResponse;
+      if (!resp?.ok) {
+        lastError = resp?.error || '下载失败';
+        continue;
+      }
+      out.push({ url, base64: resp.base64, mime: resp.mime });
+    }
+  }
+  return { images: out, lastError };
+}
+
+/** 飞书图片字节（按 url 关联） */
+export interface GatedImage2 {
+  url: string;
+  base64: string;
+  mime: string;
+}
+
 // ===== 并排图的「每图下方居中图注」：把 markdown 嵌入行转成 HTML 弹性布局 =====
 // 触发条件：一行有 2+ 张本地嵌入 ![[名|宽]]，且紧随一行斜体图注 *a*  *b*。
 // 仅当图片与笔记同文件夹（folderPerClip）时用相对路径 src，可移植、不依赖绝对路径。

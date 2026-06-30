@@ -13,7 +13,7 @@ export default defineConfig({
     name: '兆基clipper',
     description: '把网页内容简存到你的 Obsidian 仓库',
     default_locale: undefined,
-    permissions: ['activeTab', 'scripting', 'storage', 'contextMenus'],
+    permissions: ['activeTab', 'scripting', 'storage', 'contextMenus', 'identity'],
     // 本机 Obsidian Local REST API + 跨域下载图片（本地图片保存功能）
     host_permissions: [
       'http://127.0.0.1/*',

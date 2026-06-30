@@ -430,32 +430,76 @@ body {
 /* 高亮条 */
 .zc-hlbar {
   display: flex;
+  flex-direction: column;
+  gap: 7px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 10px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+.zc-hltop,
+.zc-hlactions {
+  display: flex;
   align-items: center;
   gap: 8px;
-  background: var(--hl-bg);
-  border: 1px solid var(--hl-border);
-  border-radius: 8px;
-  padding: 6px 9px;
-  font-size: 12px;
-  color: var(--hl-fg);
+  width: 100%;
 }
-.zc-hlbar span {
+.zc-hlmain {
   flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.zc-hltitle {
+  color: var(--fg);
+  font-weight: 650;
+  white-space: nowrap;
+}
+.zc-hlhint {
+  min-width: 0;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.zc-hlcount {
+  flex: 1;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.zc-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 12px;
+}
+.zc-switch input {
+  margin: 0;
+  width: 14px;
+  height: 14px;
 }
 .zc-hlbtn {
   border: none;
   background: var(--accent);
   color: var(--accent-fg);
-  border-radius: 6px;
-  padding: 4px 10px;
+  border-radius: 8px;
+  padding: 5px 10px;
   font-size: 12px;
+  font-weight: 600;
   cursor: pointer;
 }
 .zc-hlbtn-ghost {
   background: transparent;
   color: var(--muted);
-  text-decoration: underline;
-  padding: 4px 4px;
+  text-decoration: none;
+  padding: 5px 4px;
+}
+.zc-hlbtn-ghost:hover {
+  color: var(--fg);
 }
 
 .zc-grid2 {
@@ -515,6 +559,11 @@ body {
   background: var(--surface);
   padding: 8px 10px 10px;
 }
+.zc-destgrid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
 .zc-dest-pathline {
   display: flex;
   align-items: flex-start;
@@ -561,6 +610,17 @@ body {
 .zc-save:disabled {
   opacity: 0.55;
   cursor: default;
+}
+.zc-save-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.zc-save-feishu {
+  background: #3370ff;
+}
+.zc-save-actions .zc-save {
+  margin-top: 0;
 }
 .zc-saveddone {
   display: flex;

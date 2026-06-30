@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { T } from '@/utils/strings';
-import { loadSettings, saveSettings } from '@/utils/storage';
+import { loadSettings, saveSettings, activeProfile } from '@/utils/storage';
 import { composeNote } from '@/utils/frontmatter';
 import { buildObsidianUri, buildOpenUri, URI_LENGTH_WARN } from '@/utils/obsidian';
 import { saveViaRest, fileExists } from '@/utils/rest';
+import { saveToFeishu } from '@/utils/feishu-api';
 import { processNoteImages, isUnreferenceable, inlineImageRowsToHtml } from '@/utils/images';
 import { sendToTab } from '@/utils/messaging';
 import {
@@ -19,9 +20,11 @@ import {
   ExtractedPage,
   ExtractResponse,
   Settings,
+  VaultProfile,
 } from '@/utils/types';
 
 type Phase = 'loading' | 'ready' | 'error';
+type SaveTarget = 'obsidian' | 'feishu';
 
 /** 向当前激活标签页请求提取 */
 async function extractActiveTab(fullCapture = false): Promise<ExtractResponse> {
@@ -59,6 +62,43 @@ function joinFolder(a: string, b: string): string {
   return [x, y].filter(Boolean).join('/');
 }
 
+/** 仓库档下拉显示文案：仓库名 +（方式） */
+function profileLabel(name: string, method: string): string {
+  const m = method === 'rest' ? 'REST' : method === 'feishu' ? '飞书' : '链接';
+  return `${name || '未命名仓库'}（${m}）`;
+}
+
+function activeObsidianProfile(s: Settings): VaultProfile | undefined {
+  const active = activeProfile(s);
+  if (active && active.saveMethod !== 'feishu') return active;
+  return s.vaultProfiles.find((p) => p.saveMethod !== 'feishu');
+}
+
+function activeFeishuProfile(s: Settings): VaultProfile | undefined {
+  const active = activeProfile(s);
+  if (active?.saveMethod === 'feishu') return active;
+  return s.vaultProfiles.find((p) => p.saveMethod === 'feishu');
+}
+
+/**
+ * 飞书文档正文：不带 Obsidian 的 YAML frontmatter（飞书会当普通文本），
+ * 改成一段引用抬头承载元信息，标题交由文档名承载。公网图片保留内联链接由飞书抓取。
+ */
+function buildFeishuMarkdown(props: ClipProperties, body: string): string {
+  const meta: string[] = [];
+  if (props.source) meta.push(`来源：${props.source}`);
+  const line2: string[] = [];
+  if (props.author) line2.push(`作者：${props.author}`);
+  if (props.published) line2.push(`发布：${props.published}`);
+  if (props.modified) line2.push(`修改：${props.modified}`);
+  if (props.clipped) line2.push(`剪藏：${props.clipped}`);
+  if (props.learningStatus) line2.push(`学习状态：${props.learningStatus}`);
+  if (line2.length) meta.push(line2.join('　'));
+  if (props.description) meta.push(props.description.replace(/\s+/g, ' ').trim());
+  const head = meta.map((l) => `> ${l}`).join('\n');
+  return head ? `${head}\n\n${body}\n` : `${body}\n`;
+}
+
 export function App() {
   const [phase, setPhase] = useState<Phase>('loading');
   const [errMsg, setErrMsg] = useState('');
@@ -79,7 +119,7 @@ export function App() {
   const [vault, setVault] = useState('');
   const [saveImagesLocal, setSaveImagesLocal] = useState(false); // 图片处理：true=下载到本地，false=引用链接
 
-  const [saving, setSaving] = useState(false);
+  const [savingTarget, setSavingTarget] = useState<SaveTarget | null>(null);
   const [savedMsg, setSavedMsg] = useState('');
   const [savedUri, setSavedUri] = useState<string | null>(null); // 保存成功后的"打开"URI（#2）
   const [alreadyExists, setAlreadyExists] = useState(false); // 目标已存在（#1 去重，仅 REST）
@@ -94,8 +134,9 @@ export function App() {
       ]);
       setSettings(s);
       document.documentElement.dataset.theme = s.theme; // 应用主题（auto/light/dark）
-      setVault(s.vaultName);
-      setFolder(s.defaultFolder);
+      const obsProfile = activeObsidianProfile(s);
+      setVault(obsProfile?.vaultName || s.vaultName);
+      setFolder(obsProfile?.defaultFolder || s.defaultFolder);
       setSaveImagesLocal(s.saveImagesLocal);
       if (!resp.ok) {
         setErrMsg(resp.error);
@@ -143,6 +184,7 @@ export function App() {
   // 生成诊断信息并复制到剪贴板（用于排查抓取不准的页面）
   async function handleDiagnose() {
     if (diagnosing) return;
+    if (!window.confirm(T.diagnosePrivacyConfirm)) return;
     setDiagnosing(true);
     setSavedMsg('');
     try {
@@ -182,6 +224,20 @@ export function App() {
     setPage((p) => (p ? { ...p, highlights: [] } : p));
   }
 
+  async function changeHighlightFloating(enabled: boolean) {
+    if (!settings) return;
+    const next = { ...settings, highlightFloatingButton: enabled };
+    setSettings(next);
+    await saveSettings(next).catch(() => {});
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (tab?.id) {
+      await sendToTab(tab.id, {
+        type: 'ZHAOJI_CLIPPER_SET_HIGHLIGHT_FLOATING',
+        enabled,
+      }).catch(() => {});
+    }
+  }
+
   // 切换选区/整页
   function toggleSource(useSel: boolean) {
     if (!page) return;
@@ -193,7 +249,7 @@ export function App() {
   async function switchProfile(id: string) {
     if (!settings) return;
     const p = settings.vaultProfiles.find((x) => x.id === id);
-    if (!p) return;
+    if (!p || p.saveMethod === 'feishu') return;
     const next: Settings = {
       ...settings,
       activeProfileId: id,
@@ -236,6 +292,11 @@ export function App() {
     ? settings?.learnedTag || '已学习'
     : settings?.unreadTag || '未学习';
 
+  const obsidianProfile = settings ? activeObsidianProfile(settings) : undefined;
+  const feishuProfile = settings ? activeFeishuProfile(settings) : undefined;
+  const obsidianMethod = obsidianProfile?.saveMethod || settings?.saveMethod;
+  const obsidianProfiles = settings?.vaultProfiles.filter((p) => p.saveMethod !== 'feishu') ?? [];
+
   const uriPreviewLength = useMemo(() => {
     if (!page || !settings) return 0;
     const props: ClipProperties = {
@@ -251,16 +312,20 @@ export function App() {
       stats: page.stats,
     };
     const note = composeNote(props, body, settings);
-    return buildObsidianUri({ vault, filePath: joinPath(clipFolder, filename), content: note })
+    return buildObsidianUri({
+      vault: obsidianProfile?.vaultName || vault,
+      filePath: joinPath(clipFolder, filename),
+      content: note,
+    })
       .length;
-  }, [page, settings, title, author, published, modified, learningStatus, body, vault, clipFolder, filename]);
+  }, [page, settings, title, author, published, modified, learningStatus, body, obsidianProfile, vault, clipFolder, filename]);
 
   // #1 去重：REST 模式下查目标路径是否已存在（仅提示，不阻断；失败按不存在）
   useEffect(() => {
     if (
       !settings ||
-      settings.saveMethod !== 'rest' ||
-      !settings.restApiKey.trim() ||
+      obsidianMethod !== 'rest' ||
+      !obsidianProfile?.restApiKey.trim() ||
       !filename.trim()
     ) {
       setAlreadyExists(false);
@@ -268,26 +333,45 @@ export function App() {
     }
     let cancelled = false;
     const path = joinPath(clipFolder, filename);
-    fileExists({ baseUrl: settings.restBaseUrl, apiKey: settings.restApiKey }, path).then((ex) => {
+    fileExists({ baseUrl: obsidianProfile.restBaseUrl, apiKey: obsidianProfile.restApiKey }, path).then((ex) => {
       if (!cancelled) setAlreadyExists(ex);
     });
     return () => {
       cancelled = true;
     };
-  }, [settings, clipFolder, filename]);
+  }, [settings, obsidianMethod, obsidianProfile, clipFolder, filename]);
 
-  async function handleSave() {
+  async function handleSave(target: SaveTarget) {
     if (!page || !settings) return;
-    const isRest = settings.saveMethod === 'rest';
-    if (isRest && !settings.restApiKey.trim()) {
+    const method = obsidianProfile?.saveMethod || settings.saveMethod;
+    const isRest = method === 'rest';
+    const obsVault = (obsidianProfile?.vaultName || vault).trim();
+
+    if (target === 'obsidian' && !obsidianProfile) {
+      setSavedMsg('请先在设置里添加一个 Obsidian 保存目标');
+      return;
+    }
+    if (target === 'obsidian' && isRest && !obsidianProfile?.restApiKey.trim()) {
       setSavedMsg(T.needApiKey);
       return;
     }
-    if (!isRest && !vault.trim()) {
+    if (target === 'obsidian' && method === 'uri' && !obsVault) {
       setSavedMsg(T.needVault);
       return;
     }
-    setSaving(true);
+    if (target === 'feishu' && !feishuProfile) {
+      setSavedMsg('请先在设置里添加一个飞书知识库保存目标');
+      return;
+    }
+    if (target === 'feishu' && (!feishuProfile?.feishuAppId?.trim() || !feishuProfile?.feishuAppSecret?.trim())) {
+      setSavedMsg(T.feishuNeedApp);
+      return;
+    }
+    if (target === 'feishu' && !feishuProfile?.feishuSpaceId) {
+      setSavedMsg(T.feishuNeedSpace);
+      return;
+    }
+    setSavingTarget(target);
     setSavedMsg('');
     const props: ClipProperties = {
       title,
@@ -301,14 +385,61 @@ export function App() {
       tags: [],
       stats: page.stats,
     };
-    let note = composeNote(props, body, settings);
-    const filePath = joinPath(clipFolder, filename);
-    // 开启独立文件夹时，图片就放进该文件夹；否则放全局附件夹
-    const imagesFolder = settings.folderPerClip ? clipFolder : settings.attachmentsFolder;
     try {
+      if (target === 'feishu' && feishuProfile) {
+        const fcfg = {
+          appId: feishuProfile.feishuAppId || '',
+          appSecret: feishuProfile.feishuAppSecret || '',
+          domain: feishuProfile.feishuDomain || 'feishu.cn',
+          spaceId: feishuProfile.feishuSpaceId || '',
+          parentToken: feishuProfile.feishuParentToken || '',
+          host: feishuProfile.feishuHost || '',
+          userAccessToken: feishuProfile.feishuUserAccessToken || '',
+          userRefreshToken: feishuProfile.feishuUserRefreshToken || '',
+          userTokenExpireAt: feishuProfile.feishuUserTokenExpireAt || 0,
+          onUserTokenRefresh: async (tokens: { accessToken: string; refreshToken: string; expireAt: number }) => {
+            const next: Settings = {
+              ...settings,
+              vaultProfiles: settings.vaultProfiles.map((p) =>
+                p.id === feishuProfile.id
+                  ? {
+                      ...p,
+                      feishuUserAccessToken: tokens.accessToken,
+                      feishuUserRefreshToken: tokens.refreshToken,
+                      feishuUserTokenExpireAt: tokens.expireAt,
+                    }
+                  : p,
+              ),
+            };
+            setSettings(next);
+            await saveSettings(next);
+          },
+        };
+        const md = buildFeishuMarkdown(props, body);
+        const r = await saveToFeishu(fcfg, title, md, [], (m) => setSavedMsg(m));
+        let tail = '';
+        if (r.imagesTotal > 0) {
+          const err = r.lastError;
+          tail =
+            ' ' +
+            T.feishuImages(r.imagesSaved, r.imagesTotal) +
+            (r.imagesSaved < r.imagesTotal && err ? T.imagesSavedFail(err) : '');
+        }
+        if (r.url) setSavedUri(r.url);
+        const warn = r.warnings[0] ? `（${r.warnings[0]}）` : '';
+        setSavedMsg((r.partial ? T.savedPartial : T.savedOk) + tail + warn);
+        return;
+      }
+      let note = composeNote(props, body, settings);
+      const filePath = joinPath(clipFolder, filename);
+      // 开启独立文件夹时，图片就放进该文件夹；否则放全局附件夹
+      const imagesFolder = settings.folderPerClip ? clipFolder : settings.attachmentsFolder;
       let tailMsg = '';
       if (isRest) {
-        const restCfg = { baseUrl: settings.restBaseUrl, apiKey: settings.restApiKey };
+        const restCfg = {
+          baseUrl: obsidianProfile?.restBaseUrl || settings.restBaseUrl,
+          apiKey: obsidianProfile?.restApiKey || settings.restApiKey,
+        };
         // 下载模式：下载全部图片；引用模式：只下载无法被引用的图（飞书/blob），其余保留链接
         const urlFilter = saveImagesLocal ? undefined : isUnreferenceable;
         const r = await processNoteImages(
@@ -349,22 +480,26 @@ export function App() {
           IMG_LINK_RE.lastIndex = 0; // 复位全局正则状态，避免影响下次保存
           if (gated) tailMsg = T.gatedImagesUriNote;
         }
-        const uri = buildObsidianUri({ vault: vault.trim(), filePath, content: note });
+        const uri = buildObsidianUri({ vault: obsVault, filePath, content: note });
         await chrome.runtime.sendMessage({ type: 'ZHAOJI_CLIPPER_SAVE', url: uri });
       }
-      setSavedUri(buildOpenUri(vault.trim(), filePath)); // #2 保存后可打开
+      setSavedUri(buildOpenUri(obsVault, filePath)); // #2 保存后可打开
       setSavedMsg(T.savedOk + tailMsg);
     } catch (e) {
       setSavedMsg(e instanceof Error ? e.message : String(e));
     } finally {
-      setSaving(false);
+      setSavingTarget(null);
     }
   }
 
-  // #2 保存后在 Obsidian 打开该笔记（复用 background 的 obsidian:// 打开通道）
+  // #2 保存后打开该笔记：飞书是 https 网页（直接开新标签），Obsidian 走 obsidian:// 通道
   async function handleOpenNote() {
     if (!savedUri) return;
-    await chrome.runtime.sendMessage({ type: 'ZHAOJI_CLIPPER_SAVE', url: savedUri });
+    if (/^https?:/.test(savedUri)) {
+      await chrome.tabs.create({ url: savedUri });
+    } else {
+      await chrome.runtime.sendMessage({ type: 'ZHAOJI_CLIPPER_SAVE', url: savedUri });
+    }
     window.close();
   }
 
@@ -435,12 +570,12 @@ export function App() {
         </div>
         <div className="zc-prop">
           <span className="zc-prop-icon">🔗</span>
-          <span className="zc-prop-key">source</span>
+          <span className="zc-prop-key">{T.propLabels.source}</span>
           <input className="zc-prop-val zc-ro" value={page?.url ?? ''} readOnly />
         </div>
         <div className="zc-prop">
           <span className="zc-prop-icon">👤</span>
-          <span className="zc-prop-key">author</span>
+          <span className="zc-prop-key">{T.propLabels.author}</span>
           <input
             className="zc-prop-val"
             value={author}
@@ -449,7 +584,7 @@ export function App() {
         </div>
         <div className="zc-prop">
           <span className="zc-prop-icon">📅</span>
-          <span className="zc-prop-key">published</span>
+          <span className="zc-prop-key">{T.propLabels.published}</span>
           <input
             className="zc-prop-val"
             value={published}
@@ -459,7 +594,7 @@ export function App() {
         </div>
         <div className="zc-prop">
           <span className="zc-prop-icon">📝</span>
-          <span className="zc-prop-key">modified</span>
+          <span className="zc-prop-key">{T.propLabels.modified}</span>
           <input
             className="zc-prop-val"
             value={modified}
@@ -469,12 +604,12 @@ export function App() {
         </div>
         <div className="zc-prop">
           <span className="zc-prop-icon">🕐</span>
-          <span className="zc-prop-key">created</span>
+          <span className="zc-prop-key">{T.propLabels.created}</span>
           <input className="zc-prop-val zc-ro" value={today()} readOnly />
         </div>
         <div className="zc-prop zc-prop-top">
           <span className="zc-prop-icon">📄</span>
-          <span className="zc-prop-key">description</span>
+          <span className="zc-prop-key">{T.propLabels.description}</span>
           <textarea
             className="zc-prop-val zc-prop-ta"
             value={description}
@@ -515,15 +650,33 @@ export function App() {
       </button>
       {fullCapturing && <div className="zc-muted zc-caphint">{T.fullCaptureHint}</div>}
 
-      {page && page.highlights.length > 0 && (
+      {settings && (
         <div className="zc-hlbar">
-          <span>🖍 {T.highlightsCount(page.highlights.length)}</span>
-          <button className="zc-hlbtn" onClick={insertHighlights}>
-            {T.insertHighlights}
-          </button>
-          <button className="zc-hlbtn zc-hlbtn-ghost" onClick={clearHighlights}>
-            {T.clearHighlights}
-          </button>
+          <div className="zc-hltop">
+            <div className="zc-hlmain">
+              <span className="zc-hltitle">🖍 {T.highlightTool}</span>
+              <span className="zc-hlhint">{T.highlightShortcutHint}</span>
+            </div>
+            <label className="zc-switch">
+              <input
+                type="checkbox"
+                checked={settings.highlightFloatingButton}
+                onChange={(e) => changeHighlightFloating(e.target.checked)}
+              />
+              <span>{T.highlightFloatingToggle}</span>
+            </label>
+          </div>
+          {page && page.highlights.length > 0 && (
+            <div className="zc-hlactions">
+              <span className="zc-hlcount">{T.highlightsCount(page.highlights.length)}</span>
+              <button className="zc-hlbtn" onClick={insertHighlights}>
+                {T.insertHighlights}
+              </button>
+              <button className="zc-hlbtn zc-hlbtn-ghost" onClick={clearHighlights}>
+                {T.clearHighlights}
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -534,25 +687,29 @@ export function App() {
         rows={8}
       />
 
-      {settings && settings.vaultProfiles.length > 1 && (
+      {settings && obsidianProfiles.length > 1 && (
         <div className="zc-row zc-between zc-profilerow">
           <label className="zc-label zc-section">{T.saveTo}</label>
           <select
             className="zc-profile-select"
-            value={settings.activeProfileId}
+            value={obsidianProfile?.id || ''}
             onChange={(e) => switchProfile(e.target.value)}
           >
-            {settings.vaultProfiles.map((p) => (
+            {obsidianProfiles.map((p) => (
               <option key={p.id} value={p.id}>
-                {(p.vaultName || '未命名仓库') + '（' + (p.saveMethod === 'rest' ? 'REST' : '链接') + '）'}
+                {profileLabel(p.vaultName, p.saveMethod)}
               </option>
             ))}
           </select>
         </div>
       )}
 
+      {feishuProfile && (
+        <div className="zc-imgblock zc-fieldhint">{T.feishuImageHint}</div>
+      )}
+
       {(() => {
-        const isRest = settings?.saveMethod === 'rest';
+        const isRest = obsidianMethod === 'rest';
         const downloadActive = isRest && saveImagesLocal;
         return (
           <div className="zc-imgblock">
@@ -587,41 +744,69 @@ export function App() {
       })()}
 
       {/* 仓库与保存文件夹由「保存到」下拉/设置页决定，这里直接显示路径预览 + 文件名 */}
-      <div className="zc-dest-open">
-        <div className="zc-dest-pathline" title={T.saveLocation}>
-          <span className="zc-dest-icon">📁</span>
-          <span className="zc-dest-path">
-            {(clipFolder ? `${clipFolder}/` : '') + safeName(filename)}.md
-          </span>
+      <div className="zc-destgrid">
+        <div className="zc-dest-open">
+          <div className="zc-dest-pathline" title={T.saveLocation}>
+            <span className="zc-dest-icon">📁</span>
+            <span className="zc-dest-path">
+              {(clipFolder ? `${clipFolder}/` : '') + safeName(filename)}.md
+            </span>
+          </div>
+          <label className="zc-label">{T.fieldFilename}</label>
+          <input
+            className="zc-input"
+            value={filename}
+            onChange={(e) => setFilename(e.target.value)}
+          />
+          <div className="zc-fieldhint">{T.filenameNote}</div>
         </div>
-        <label className="zc-label">{T.fieldFilename}</label>
-        <input
-          className="zc-input"
-          value={filename}
-          onChange={(e) => setFilename(e.target.value)}
-        />
-        <div className="zc-fieldhint">{T.filenameNote}</div>
+
+        <div className="zc-dest-open">
+          <div className="zc-dest-pathline" title={T.feishuDest}>
+            <span className="zc-dest-icon">📘</span>
+            <span className="zc-dest-path">
+              {feishuProfile
+                ? (feishuProfile.feishuSpaceName || feishuProfile.vaultName || '飞书知识库') +
+                  (feishuProfile.feishuParentTitle ? ` / ${feishuProfile.feishuParentTitle}` : ' / 根目录')
+                : '未配置飞书知识库'}
+            </span>
+          </div>
+          <div className="zc-fieldhint">{T.feishuDestHint}</div>
+        </div>
       </div>
 
-      {settings?.saveMethod !== 'rest' && uriPreviewLength > URI_LENGTH_WARN && (
+      {obsidianMethod === 'uri' && uriPreviewLength > URI_LENGTH_WARN && (
         <div className="zc-warn">⚠ {T.tooLongWarn}</div>
       )}
       {alreadyExists && !savedUri && <div className="zc-warn">{T.existsWarn}</div>}
       {savedMsg && <div className="zc-savedmsg">{savedMsg}</div>}
 
-      {savedUri ? (
+      <div className="zc-save-actions">
+        <button
+          className="zc-save"
+          onClick={() => handleSave('obsidian')}
+          disabled={!!savingTarget}
+        >
+          {savingTarget === 'obsidian' ? T.saving : T.save}
+        </button>
+        <button
+          className="zc-save zc-save-feishu"
+          onClick={() => handleSave('feishu')}
+          disabled={!!savingTarget}
+        >
+          {savingTarget === 'feishu' ? T.saving : T.saveFeishu}
+        </button>
+      </div>
+
+      {savedUri && (
         <div className="zc-saveddone">
           <button className="zc-save" onClick={handleOpenNote}>
-            {T.openInObsidian}
+            {/^https?:/.test(savedUri) ? T.openInFeishu : T.openInObsidian}
           </button>
           <button className="zc-save zc-save-ghost" onClick={() => window.close()}>
             {T.closeWindow}
           </button>
         </div>
-      ) : (
-        <button className="zc-save" onClick={handleSave} disabled={saving}>
-          {saving ? T.saving : T.save}
-        </button>
       )}
 
       <button className="zc-diaglink" onClick={handleDiagnose} disabled={diagnosing}>
