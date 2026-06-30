@@ -14,8 +14,9 @@
 - 支持整页正文、选区剪藏、完整滚动抓取、X thread 抓取和网页划词高亮。
 - 保存为 Obsidian Markdown，支持 frontmatter、标签、作者、发布时间、来源 URL 等属性。
 - 支持 `obsidian://` 零配置保存，也支持 Obsidian Local REST API 写入超长内容与本地图片。
+- 支持「一键存入飞书知识库」：用自建应用 + OAuth 授权把剪藏转成飞书文档并放入指定知识库节点；公网图片通常由飞书导入器解析，需登录图片可能受飞书导入能力限制。
 - 支持每篇独立文件夹归档、图片随文保存、标签黑名单、常用标签复用、阅读状态标签、按网站自动加标签和暗色主题。
-- 不依赖云端服务，剪藏内容在浏览器与用户本地 Obsidian 之间流转。
+- 默认不依赖云端服务，剪藏内容在浏览器与用户本地 Obsidian 之间流转；飞书保存为可选上传项，仅在用户主动配置并点击保存后生效。
 
 ## 支持的平台
 
@@ -153,6 +154,7 @@ python3 -c "d=open('.output/chrome-mv3/content-scripts/content.js','rb').read();
 1. 首次：点扩展图标右上角 ⚙ 进设置，选**保存方式**——
    - `obsidian://`（零配置）：填 **Obsidian 仓库名**即可；
    - **Local REST API**（推荐，超长不截断、可存本地图片）：在 Obsidian 装「Local REST API」插件、开 HTTP 服务、把 API Key 填进来。
+   - **飞书知识库**：在飞书开放平台建「自建应用」，开通 `offline_access`、`drive:file:upload`、`drive:drive`、`docs:document:import`、`wiki:wiki` 权限，配置重定向 URL 后登录授权，选好目标知识库节点。插件会以用户本人身份保存，用户本人能访问/写入的知识库即可。多套保存目标可在弹窗顶部「保存到」一键切换。
 2. 在任意文章页点扩展图标（或快捷键 `Ctrl/Cmd+Shift+S`，或右键「用兆基clipper剪藏此页」）。
 3. 弹窗中预览/编辑标题、正文、属性（标签为 chip 编辑器）、保存位置，点「保存到 Obsidian」，存完可一键「在 Obsidian 打开」。
 4. 选中部分文字后再剪藏，会默认只存选中内容（可切整页）。
@@ -162,7 +164,9 @@ python3 -c "d=open('.output/chrome-mv3/content-scripts/content.js','rb').read();
 
 ## 隐私
 
-兆基clipper 不提供云端服务，不采集用户剪藏内容，不上传网页正文、图片、标签或 Obsidian 配置。Local REST API Key 单独保存在当前设备的 `chrome.storage.local`，不会写入 GitHub，也不会通过 `chrome.storage.sync` 随浏览器账号同步；它仅用于请求用户本机的 Obsidian Local REST API。
+兆基clipper 默认不提供云端服务、不采集用户剪藏内容，也不向第三方上传网页正文、图片、标签或 Obsidian 配置。Local REST API Key 与飞书应用凭证（App Secret / OAuth token）单独保存在当前设备的 `chrome.storage.local`，不会写入 GitHub，也不会通过 `chrome.storage.sync` 随浏览器账号同步。
+
+唯一的对外上传发生在用户**主动选择「飞书知识库」保存方式并配置自建应用后**：此时剪藏内容会上传到用户自己的飞书知识库（用用户自己的应用凭证，直连飞书开放平台，不经过任何第三方服务器）。不选飞书则不发生任何上传。
 
 详见 [`PRIVACY.md`](./PRIVACY.md)。
 

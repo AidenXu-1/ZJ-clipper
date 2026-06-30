@@ -22,9 +22,13 @@ import {
 } from '@/utils/extract-core';
 import { dispatchExtract, resolveAdapter } from '@/utils/extractors';
 import { diagnoseBili } from '@/utils/extractors/bilibili';
+import { loadSettings } from '@/utils/storage';
 
 // 本页高亮内存副本（与 storage 同步）
 let pageHighlights: Highlight[] = [];
+let selectionButtonEnabled = true;
+let selectionButtonSetup = false;
+let selectionButtonEl: HTMLButtonElement | null = null;
 
 /** 页面加载后恢复已保存的高亮 */
 async function restoreHighlights() {
@@ -52,7 +56,10 @@ async function doHighlightSelection(): Promise<number> {
 
 /** 划词浮动按钮：选中文字后在旁边显示「🖍 高亮」，点击即高亮（零快捷键，最直观） */
 function setupSelectionButton() {
+  if (selectionButtonSetup) return;
+  selectionButtonSetup = true;
   const btn = document.createElement('button');
+  selectionButtonEl = btn;
   btn.textContent = '🖍 高亮';
   btn.id = 'zhaoji-clipper-hl-btn';
   btn.style.cssText = [
@@ -86,7 +93,15 @@ function setupSelectionButton() {
   (document.body || document.documentElement).appendChild(btn);
 
   document.addEventListener('mouseup', () => {
+    if (!selectionButtonEnabled) {
+      hide();
+      return;
+    }
     setTimeout(() => {
+      if (!selectionButtonEnabled) {
+        hide();
+        return;
+      }
       const sel = window.getSelection();
       if (!sel || sel.isCollapsed || !sel.toString().trim()) {
         hide();
@@ -106,6 +121,17 @@ function setupSelectionButton() {
     if (e.target !== btn) hide();
   });
   document.addEventListener('scroll', hide, true);
+}
+
+function setSelectionButtonEnabled(enabled: boolean) {
+  selectionButtonEnabled = enabled;
+  if (!enabled) selectionButtonEl?.style.setProperty('display', 'none', 'important');
+  if (enabled) setupSelectionButton();
+}
+
+async function initHighlightPreferences() {
+  const s = await loadSettings();
+  setSelectionButtonEnabled(s.highlightFloatingButton);
 }
 
 /** Option/Alt + 点击高亮标记 → 移除该条（避免阅读时误删） */
@@ -146,6 +172,11 @@ export default defineContentScript({
         saveHighlights(pageHighlights).then(() => sendResponse({ ok: true }));
         return true;
       }
+      if (msg?.type === 'ZHAOJI_CLIPPER_SET_HIGHLIGHT_FLOATING') {
+        setSelectionButtonEnabled(msg.enabled !== false);
+        sendResponse({ ok: true });
+        return false;
+      }
       if (msg?.type === 'ZHAOJI_CLIPPER_DIAGNOSE') {
         diagnoseFull()
           .then((dump) => sendResponse({ ok: true, dump }))
@@ -169,7 +200,14 @@ export default defineContentScript({
     // 高亮相关初始化（放在监听器注册之后，出错也不影响剪藏）
     try {
       restoreHighlights();
-      setupSelectionButton();
+      initHighlightPreferences().catch(() => setupSelectionButton());
+      chrome.storage.onChanged.addListener((changes) => {
+        if (!changes.zhaoji_clipper_settings) return;
+        const next = changes.zhaoji_clipper_settings.newValue as
+          | { highlightFloatingButton?: boolean }
+          | undefined;
+        setSelectionButtonEnabled(next?.highlightFloatingButton !== false);
+      });
       document.addEventListener('click', onHighlightClick, true);
     } catch {
       /* 某些受限页面初始化失败，忽略 */

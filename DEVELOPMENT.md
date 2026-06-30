@@ -14,6 +14,8 @@
 
 开发时优先维护这个边界。不要为了方便把 AI 服务、云端依赖或隐式上传能力加进扩展。
 
+> 例外：v3.1.0 起新增「飞书知识库」保存方式（`saveMethod: 'feishu'`），会把剪藏内容上传到用户自己的飞书知识库。这是用户**显式选择并配置自建应用凭证后**才会发生的上传通道，是对「不做隐式上传」的有意例外——默认仍是本地 Obsidian。除此之外不要再引入隐式/自动的远程上传。
+
 ## Agent 接手提示词
 
 如果你要让 Codex、Claude Code 或其它本地 Agent 继续开发，可以复制这段：
@@ -83,6 +85,13 @@ utils/obsidian.ts
 
 utils/rest.ts
   Obsidian Local REST API 写入、连接测试、文件存在检查、二进制附件写入。
+
+utils/feishu-api.ts
+  飞书知识库写入通道（仅 popup/options 引用，不进内容脚本）。
+  App ID+Secret + OAuth user_access_token（access token 过期时用 refresh token 刷新）、列知识库/节点、
+  测试连接、saveToFeishu（上传 md→导入为 docx→移入知识库；公开图片交给飞书导入器解析）。
+  所需 OAuth user scope：offline_access、drive:file:upload、drive:drive、docs:document:import、wiki:wiki。
+  飞书保存走 user_access_token，以用户本人身份访问/写入其有权限的知识库。
 
 utils/hosts.ts
   需登录鉴权才能取图的站点清单（飞书/Lark）。供两处共用：
@@ -350,5 +359,5 @@ npm run zip:edge
 明确不建议加入：
 
 - AI 摘要、总结、改写。
-- 远程内容上传。
+- 隐式/自动的远程内容上传（用户显式配置的飞书知识库保存除外，见上文 capture-only 例外）。
 - 抖音等需要音频转写才能得到正文语义的平台。

@@ -6,7 +6,8 @@
 
 - 不提供云端服务。
 - 不收集、出售或共享用户数据。
-- 不上传网页正文、图片、标签、URL、Obsidian 仓库名或 Local REST API Key 到任何第三方服务器。
+- 默认不上传网页正文、图片、标签、URL、Obsidian 仓库名或 Local REST API Key 到任何第三方服务器。
+- 例外：当用户主动配置并点击「保存到飞书知识库」时，当前剪藏内容会直连上传到用户自己的飞书知识库，不经过本插件开发者服务器。
 - 不做 AI 总结、改写、分类或远程语义处理。
 
 ## 本地存储
@@ -16,14 +17,15 @@
 - Obsidian 仓库名。
 - 保存方式。
 - Local REST API 地址与 API Key。
+- 飞书自建应用 App ID / App Secret、OAuth access token / refresh token（仅在用户配置飞书保存时）。
 - 默认保存文件夹、命名模板、主题设置、标签黑名单和常用标签历史。
 - 用户在网页上保存的高亮锚点。
 
-普通偏好设置可能通过浏览器的 `chrome.storage.sync` 在用户已登录的浏览器之间同步。Local REST API Key 与网页高亮保存在当前设备的 `chrome.storage.local`，不会进入同步存储。
+普通偏好设置可能通过浏览器的 `chrome.storage.sync` 在用户已登录的浏览器之间同步。Local REST API Key、飞书 App Secret、飞书 OAuth token 与网页高亮保存在当前设备的 `chrome.storage.local`，不会进入同步存储。
 
 ## 页面内容访问
 
-当用户主动点击扩展、快捷键或右键菜单时，扩展会读取当前页面内容，用于生成剪藏预览和 Markdown 正文。读取结果只在扩展弹窗、当前页面内容脚本和用户配置的 Obsidian 保存通道之间流转。
+当用户主动点击扩展、快捷键或右键菜单时，扩展会读取当前页面内容，用于生成剪藏预览和 Markdown 正文。读取结果只在扩展弹窗、当前页面内容脚本和用户配置的保存通道之间流转。
 
 ## Obsidian 保存通道
 
@@ -35,6 +37,12 @@
 Local REST API Key 只用于访问用户本机 Obsidian 插件提供的接口。
 
 API Key 单独保存在当前设备的浏览器扩展本地存储（`chrome.storage.local`）中，不写入同步存储，不随浏览器账号同步。旧版本升级后会自动把已有 Key 迁移到本地存储，并清除同步副本。
+
+## 飞书保存通道
+
+飞书知识库保存是可选功能。只有用户在设置页填写自建应用凭证、完成 OAuth 授权，并在剪藏弹窗点击「保存到飞书知识库」时，扩展才会把当前剪藏内容上传到飞书开放平台并导入为用户知识库里的飞书文档。
+
+飞书 App Secret、OAuth access token 与 refresh token 只保存在当前设备的浏览器扩展本地存储（`chrome.storage.local`）中，不写入同步存储，不随浏览器账号同步。
 
 ## 第三方网站限制
 

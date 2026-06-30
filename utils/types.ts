@@ -65,16 +65,20 @@ export interface ClipProperties {
 }
 
 /** 插件设置 */
-/** 保存方式：obsidian:// URI 或 Local REST API */
-export type SaveMethod = 'uri' | 'rest';
+/** 保存方式：obsidian:// URI / Local REST API / 飞书知识库 */
+export type SaveMethod = 'uri' | 'rest' | 'feishu';
+
+/** 飞书数据中心：国内版 feishu.cn / 国际版 larksuite.com（决定 API 与打开链接域名） */
+export type FeishuDomain = 'feishu.cn' | 'larksuite.com';
 
 /**
  * 仓库配置档：一份完整的"保存目标"。可存多套，在使用界面一键切换。
  * vaultName 同时用于保存后"打开"的跳转链接（两种方式都需要，避免打开时"未找到"）。
+ * 飞书档复用 vaultName 作为下拉显示名（建议填知识库名），飞书专属字段见下。
  */
 export interface VaultProfile {
   id: string;
-  /** Obsidian 仓库名：既是下拉显示名，又用于 uri 保存与两种方式的"打开"跳转 */
+  /** Obsidian 仓库名：既是下拉显示名，又用于 uri 保存与两种方式的"打开"跳转；飞书档仅作显示名 */
   vaultName: string;
   saveMethod: SaveMethod;
   /** Local REST API 地址（rest 方式用） */
@@ -83,6 +87,29 @@ export interface VaultProfile {
   restApiKey: string;
   /** 默认保存文件夹（每个仓库各自的归档位置，如 "剪藏/"） */
   defaultFolder: string;
+  // ===== 飞书知识库（saveMethod==='feishu' 时用，整档只存 local，故凭证不进 sync）=====
+  /** 自建应用 App ID */
+  feishuAppId?: string;
+  /** 自建应用 App Secret（仅存本地，不同步） */
+  feishuAppSecret?: string;
+  /** 数据中心域名 */
+  feishuDomain?: FeishuDomain;
+  /** 目标知识库 space_id */
+  feishuSpaceId?: string;
+  /** 目标知识库名（仅作显示） */
+  feishuSpaceName?: string;
+  /** 目标父节点 node_token（空=知识库根） */
+  feishuParentToken?: string;
+  /** 目标父节点标题（仅作显示） */
+  feishuParentTitle?: string;
+  /** 租户站点域名（如 https://xxx.feishu.cn，来自粘贴的链接），用于拼"打开"链接 */
+  feishuHost?: string;
+  /** 用户 OAuth access token（仅存本地，用于以用户身份列知识库/写文档） */
+  feishuUserAccessToken?: string;
+  /** 用户 OAuth refresh token（仅存本地） */
+  feishuUserRefreshToken?: string;
+  /** 用户 access token 过期时间戳（ms） */
+  feishuUserTokenExpireAt?: number;
 }
 
 /** 界面主题：跟随系统 / 浅色 / 深色 */
@@ -103,6 +130,8 @@ export interface SiteTagRule {
 export interface Settings {
   /** 界面主题（弹窗+设置页） */
   theme: ThemeMode;
+  /** 选中文字后是否显示"高亮"浮动按钮 */
+  highlightFloatingButton: boolean;
   /** 多套仓库配置档（保存目标），用于一键切换；空则按下面的单套字段迁移生成 */
   vaultProfiles: VaultProfile[];
   /** 当前生效的仓库档 id */
@@ -153,6 +182,7 @@ export interface Settings {
 
 export const DEFAULT_SETTINGS: Settings = {
   theme: 'auto',
+  highlightFloatingButton: true,
   vaultProfiles: [],
   activeProfileId: '',
   saveMethod: 'uri',
@@ -220,6 +250,10 @@ export interface GetHighlightsRequest {
 }
 export interface ClearHighlightsRequest {
   type: 'ZHAOJI_CLIPPER_CLEAR_HIGHLIGHTS';
+}
+export interface SetHighlightFloatingButtonRequest {
+  type: 'ZHAOJI_CLIPPER_SET_HIGHLIGHT_FLOATING';
+  enabled: boolean;
 }
 
 /** 诊断请求：导出页面结构供开发者分析 */
