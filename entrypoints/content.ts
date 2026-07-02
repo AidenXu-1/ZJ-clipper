@@ -938,32 +938,46 @@ async function diagnoseFull(): Promise<string> {
   const ctx: ExtractContext = {
     url: location.href,
     hostname: location.hostname,
-    fullCapture: false,
+    fullCapture: true,
     highlights: [],
     selectionHtml: '',
   };
   lines.push(`matchedAdapter: ${resolveAdapter(ctx)}`);
   try {
+    const actual = await dispatchExtract(ctx);
+    const actualMd = actual.page.contentMarkdown || '';
+    lines.push(`actualAdapter: ${actual.matched}`);
+    lines.push(
+      `actualTitle: ${actual.page.title} | author: ${actual.page.author} | words: ${actual.page.wordCount}`,
+    );
+    lines.push(`实际正文Markdown长度: ${actualMd.length}`);
+    lines.push(`实际正文Markdown图片数(![]): ${(actualMd.match(/!\[/g) || []).length}`);
+    lines.push('--- 实际正文Markdown 前 800 字 ---');
+    lines.push(actualMd.slice(0, 800));
+    lines.push('--- 实际正文Markdown 末 200 字 ---');
+    lines.push(actualMd.slice(-200));
+
     const parsed = await parseWithSelector(location.href);
     const md = htmlToMarkdown(parsed.content || '');
-    lines.push(`extractorType: ${parsed.extractorType || '(通用算法)'}`);
-    lines.push(`contentSelector: ${parsed.debug?.contentSelector || '(无)'}`);
-    lines.push(`title: ${parsed.title} | author: ${parsed.author} | words: ${parsed.wordCount}`);
-    lines.push(`正文Markdown长度: ${md.length}`);
-    lines.push(`正文Markdown图片数(![]): ${(md.match(/!\[/g) || []).length}`);
-    lines.push('--- 正文Markdown 前 800 字 ---');
+    lines.push('--- Defuddle 原始结果（仅供对照，不代表实际保存）---');
+    lines.push(`defuddleExtractorType: ${parsed.extractorType || '(通用算法)'}`);
+    lines.push(`defuddleContentSelector: ${parsed.debug?.contentSelector || '(无)'}`);
+    lines.push(`defuddleTitle: ${parsed.title} | author: ${parsed.author} | words: ${parsed.wordCount}`);
+    lines.push(`Defuddle Markdown长度: ${md.length}`);
+    lines.push(`Defuddle Markdown图片数(![]): ${(md.match(/!\[/g) || []).length}`);
+    lines.push('--- Defuddle Markdown 前 800 字 ---');
     lines.push(md.slice(0, 800));
-    lines.push('--- 正文Markdown 末 200 字 ---');
+    lines.push('--- Defuddle Markdown 末 200 字 ---');
     lines.push(md.slice(-200));
     // 每张图在 markdown 中的排布：看彼此是否相邻（前/后是不是紧挨着另一张图），·=空白
     lines.push('--- 正文图片在 markdown 中的排布（前/后各取 24 字，·=空白）---');
     const RE = /!\[([^\]]*)\]\(([^)\s]+)\)/g;
     let mm: RegExpExecArray | null;
     let n = 0;
-    while ((mm = RE.exec(md))) {
+    while ((mm = RE.exec(actualMd))) {
       const key = (mm[2].match(/mount_node_token=([^&]+)/) || [])[1] || mm[2].slice(-18);
-      const before = md.slice(Math.max(0, mm.index - 24), mm.index).replace(/\s/g, '·');
-      const after = md
+      const before = actualMd.slice(Math.max(0, mm.index - 24), mm.index).replace(/\s/g, '·');
+      const after = actualMd
         .slice(mm.index + mm[0].length, mm.index + mm[0].length + 24)
         .replace(/\s/g, '·');
       lines.push(`  [图${n++}] key=${key} alt="${mm[1]}"`);

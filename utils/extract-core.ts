@@ -450,14 +450,26 @@ export async function captureFullContent(
       if (el.querySelector(nodeSelector)) continue;
       let sourceEl = el;
       if (blockSelector) {
-        let candidate: HTMLElement | null = el;
-        let parentBlock = candidate.parentElement?.closest<HTMLElement>('[data-block-id]') || null;
-        while (parentBlock && parentBlock !== root) {
-          if (parentBlock.getAttribute('data-block-type') === 'page') break;
-          candidate = parentBlock;
-          parentBlock = candidate.parentElement?.closest<HTMLElement>('[data-block-id]') || null;
+        const isMediaNode =
+          /^(IMG|IFRAME|VIDEO|FIGURE)$/.test(el.tagName) ||
+          !!el.querySelector('img, iframe, video');
+        if (isMediaNode) {
+          const ownerList = el.closest<HTMLElement>(
+            '[data-block-type="bullet"], [data-block-type="ordered"], [data-block-type="todo"]',
+          );
+          if (ownerList && ownerList !== root) {
+            sourceEl = ownerList;
+          }
+        } else {
+          let candidate: HTMLElement | null = el;
+          let parentBlock = candidate.parentElement?.closest<HTMLElement>('[data-block-id]') || null;
+          while (parentBlock && parentBlock !== root) {
+            if (parentBlock.getAttribute('data-block-type') === 'page') break;
+            candidate = parentBlock;
+            parentBlock = candidate.parentElement?.closest<HTMLElement>('[data-block-id]') || null;
+          }
+          sourceEl = candidate;
         }
-        sourceEl = candidate;
       }
 
       const text = (sourceEl.textContent || '').trim();
@@ -487,9 +499,13 @@ export async function captureFullContent(
       const prev = blocks.get(key);
       if (!prev) {
         blocks.set(key, { y, html: outerHTML });
-      } else if (outerHTML.length > prev.html.length) {
-        // 渲染更完整时更新
-        prev.html = outerHTML;
+      } else {
+        // 同一块在飞书虚拟滚动中可能被多次采样。HTML 变完整时要一起保留
+        // 最靠前的文档坐标，否则标题和它的子内容会按旧采样位置错序。
+        prev.y = Math.min(prev.y, y);
+        if (outerHTML.length > prev.html.length) {
+          prev.html = outerHTML;
+        }
       }
     }
   };
