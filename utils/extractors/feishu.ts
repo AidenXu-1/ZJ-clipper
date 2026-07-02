@@ -712,6 +712,13 @@ function codeBlockId(el: Element): { recordId: string; blockId: string } {
   };
 }
 
+function normalizeCodePresenceText(text: string): string {
+  return stripZeroWidth(text)
+    .replace(/\u00A0/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function dataUrlImage(dataUrl: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -919,7 +926,11 @@ function collectVisibleCodeLines(scope: Element): Array<{ y: number; text: strin
 function isCodeCopyControl(el: HTMLElement): boolean {
   const text = stripZeroWidth(el.textContent || '').replace(/\s+/g, '').trim();
   const aria = stripZeroWidth(
-    el.getAttribute('aria-label') || el.getAttribute('title') || el.getAttribute('data-tooltip') || '',
+    el.getAttribute('aria-label') ||
+      el.getAttribute('title') ||
+      el.getAttribute('data-tooltip') ||
+      el.getAttribute('data-lark-tooltip') ||
+      '',
   )
     .replace(/\s+/g, '')
     .trim();
@@ -928,24 +939,46 @@ function isCodeCopyControl(el: HTMLElement): boolean {
 }
 
 function findCodeCopyButton(el: HTMLElement): HTMLElement | null {
+  const selectors = [
+    'button',
+    '[role="button"]',
+    '[class*="copy" i]',
+    '[class*="clipboard" i]',
+    '[aria-label*="copy" i]',
+    '[title*="copy" i]',
+    '[data-tooltip*="copy" i]',
+    '[aria-label*="复制"]',
+    '[title*="复制"]',
+    '[data-tooltip*="复制"]',
+    '[data-lark-tooltip*="复制"]',
+  ].join(', ');
   const candidates = Array.from(
-    el.querySelectorAll<HTMLElement>(
-      [
-        'button',
-        '[role="button"]',
-        '[class*="copy" i]',
-        '[class*="clipboard" i]',
-        '[aria-label*="copy" i]',
-        '[title*="copy" i]',
-      ].join(', '),
-    ),
+    el.querySelectorAll<HTMLElement>(selectors),
   );
   return candidates.find(isCodeCopyControl) || null;
 }
 
 async function tryCopyCodeText(el: HTMLElement): Promise<string> {
+  const documentScroller = findFeishuDocumentScroller();
+  const originalDocumentTop = documentScroller.scrollTop;
+  const originalWindowX = window.scrollX;
+  const originalWindowY = window.scrollY;
+  const restoreScroll = () => {
+    documentScroller.scrollTop = originalDocumentTop;
+    window.scrollTo(originalWindowX, originalWindowY);
+  };
+
+  el.scrollIntoView({ block: 'center', inline: 'nearest' });
+  for (const type of ['mouseenter', 'mouseover']) {
+    el.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, view: window }));
+  }
+  await new Promise((resolve) => setTimeout(resolve, 120));
+
   const btn = findCodeCopyButton(el);
-  if (!btn) return '';
+  if (!btn) {
+    restoreScroll();
+    return '';
+  }
 
   let copied = '';
   const onCopy = (ev: ClipboardEvent) => {
@@ -962,6 +995,9 @@ async function tryCopyCodeText(el: HTMLElement): Promise<string> {
 
   document.addEventListener('copy', onCopy, true);
   try {
+    for (const type of ['mouseenter', 'mouseover', 'mousedown', 'mouseup']) {
+      btn.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, view: window }));
+    }
     btn.click();
     await new Promise((resolve) => setTimeout(resolve, 450));
     if (!copied.trim()) {
@@ -980,9 +1016,36 @@ async function tryCopyCodeText(el: HTMLElement): Promise<string> {
         // Clipboard restoration is best-effort; extraction must not fail here.
       }
     }
+    restoreScroll();
   }
 
   return copied;
+}
+
+function findScrollableCodeElement(el: HTMLElement): HTMLElement {
+  const preferred = el.matches('.code-block-content, .ace_scroller, .cm-scroller, .monaco-scrollable-element')
+    ? el
+    : el.querySelector<HTMLElement>('.code-block-content, .ace_scroller, .cm-scroller, .monaco-scrollable-element');
+  if (preferred && preferred.scrollHeight > preferred.clientHeight + 8) return preferred;
+
+  let best: HTMLElement = el;
+  let bestScore = el.scrollHeight - el.clientHeight;
+  for (const node of Array.from(el.querySelectorAll<HTMLElement>('*'))) {
+    if (node.clientHeight < 24) continue;
+    const score = node.scrollHeight - node.clientHeight;
+    if (score <= Math.max(8, bestScore)) continue;
+    const style = getComputedStyle(node);
+    const marker = `${node.className || ''} ${node.getAttribute('class') || ''}`.toLowerCase();
+    const looksScrollable =
+      style.overflowY === 'auto' ||
+      style.overflowY === 'scroll' ||
+      style.overflowY === 'overlay' ||
+      /scroll|scroller|code|content|editor/.test(marker);
+    if (!looksScrollable) continue;
+    best = node;
+    bestScore = score;
+  }
+  return best;
 }
 
 function isCodeScroller(el: Element): boolean {
@@ -1022,12 +1085,7 @@ async function captureScrollableCode(el: HTMLElement): Promise<string> {
   const copied = await tryCopyCodeText(el).catch(() => '');
   if (copied.trim()) return copied;
 
-  const scroller =
-    (el.matches('.code-block-content, .ace_scroller, .cm-scroller, .monaco-scrollable-element')
-      ? el
-      : el.querySelector<HTMLElement>(
-          '.code-block-content, .ace_scroller, .cm-scroller, .monaco-scrollable-element',
-        )) || el;
+  const scroller = findScrollableCodeElement(el);
   const maxTop = () => Math.max(0, scroller.scrollHeight - scroller.clientHeight);
   if (scroller.scrollHeight <= scroller.clientHeight + 8) return feishuCodeText(el);
 
@@ -1326,8 +1384,16 @@ async function captureFeishuFullContentOnce(contentSelector?: string): Promise<F
     if (getTop() === lastTop) break;
     lastTop = getTop();
   }
-  await new Promise((resolve) => setTimeout(resolve, 350));
-  await captureCurrentScreen();
+  const tailTops = [
+    Math.max(0, maxTop() - viewH * 0.55),
+    Math.max(0, maxTop() - viewH * 0.25),
+    maxTop(),
+  ];
+  for (const top of tailTops) {
+    setTop(top);
+    await new Promise((resolve) => setTimeout(resolve, 280));
+    await captureCurrentScreen();
+  }
   setTop(origTop);
   window.scrollTo(origX, origY);
 
@@ -1386,9 +1452,13 @@ function normalizeFeishuHtml(
     el.replaceWith(img);
   }
 
-  // Remaining ISV/mini-app blocks have no screenshot (usually because the user
-  // chose normal capture, not full capture). Do not keep duplicated iframe links.
-  root.querySelectorAll('[data-block-type="isv"], .docx-isv-block').forEach((n) => n.remove());
+  // Remaining ISV/mini-app blocks have no screenshot. Preserve an explicit
+  // placeholder instead of silently dropping source content.
+  root.querySelectorAll('[data-block-type="isv"], .docx-isv-block').forEach((n) => {
+    const p = doc.createElement('p');
+    p.textContent = '[飞书嵌入内容：未能截图]';
+    n.replaceWith(p);
+  });
 
   const codeByKey = new Map<string, FeishuCodeCapture>();
   for (const code of codes) {
@@ -1492,6 +1562,19 @@ function normalizeFeishuHtml(
     const mark = doc.createElement('mark');
     for (const child of Array.from(el.childNodes)) mark.appendChild(child.cloneNode(true));
     el.replaceWith(mark);
+  }
+
+  let existingCodeText = normalizeCodePresenceText(root.textContent || '');
+  for (const captured of codes) {
+    const codeText = normalizeCodePresenceText(captured.text);
+    if (!codeText || existingCodeText.includes(codeText)) continue;
+    const pre = doc.createElement('pre');
+    const code = doc.createElement('code');
+    if (captured.language) code.setAttribute('class', `language-${captured.language}`);
+    code.textContent = captured.text;
+    pre.appendChild(code);
+    root.appendChild(pre);
+    existingCodeText = `${existingCodeText} ${codeText}`.trim();
   }
 
   return root.innerHTML;
