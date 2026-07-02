@@ -5,7 +5,6 @@ import { CaptureVisibleTabResponse, ExtractedPage } from '@/utils/types';
 import {
   ExtractContext,
   SiteExtractor,
-  captureFullContent,
   htmlToMarkdown,
   parseWithSelector,
   stripZeroWidth,
@@ -167,6 +166,49 @@ function htmlEscape(s: string): string {
     .replace(/"/g, '&quot;');
 }
 
+function normalizeFeishuHref(raw: string): string {
+  const value = (raw || '').trim();
+  if (!value) return '';
+  const direct = value.match(/https?:\/\/[^\s"'<>]+/i)?.[0] || '';
+  const candidate = direct || value;
+  if (candidate.startsWith('#')) return '';
+  if (/^javascript:/i.test(candidate) && !direct) return '';
+  if (/^https?:\/\//i.test(candidate)) return candidate;
+  if (candidate.startsWith('//')) return `https:${candidate}`;
+  if (candidate.startsWith('/')) {
+    try {
+      return new URL(candidate, location.origin).href;
+    } catch {
+      return candidate;
+    }
+  }
+  return '';
+}
+
+function feishuElementHref(el: HTMLElement): string {
+  const preferredAttrs = [
+    'href',
+    'data-href',
+    'data-url',
+    'data-link',
+    'data-link-url',
+    'data-open-url',
+    'data-target-url',
+    'data-clipboard-text',
+  ];
+  for (const attr of preferredAttrs) {
+    const href = normalizeFeishuHref(el.getAttribute(attr) || '');
+    if (href) return href;
+  }
+
+  for (const attr of Array.from(el.attributes)) {
+    if (!/(href|url|link)/i.test(attr.name)) continue;
+    const href = normalizeFeishuHref(attr.value);
+    if (href) return href;
+  }
+  return '';
+}
+
 function feishuInlineHtml(node: Node): string {
   if (node.nodeType === Node.TEXT_NODE) return htmlEscape(node.textContent || '');
   if (node.nodeType !== Node.ELEMENT_NODE) return '';
@@ -204,6 +246,10 @@ function feishuInlineHtml(node: Node): string {
   if (bold) out = `<strong>${out}</strong>`;
   if (italic) out = `<em>${out}</em>`;
   if (highlighted) out = `<mark>${out}</mark>`;
+  const href = feishuElementHref(el);
+  if (href && (tag === 'A' || /link|url|reference|mention/.test(cls))) {
+    out = `<a href="${htmlEscape(href)}">${out}</a>`;
+  }
   return out;
 }
 
@@ -213,6 +259,173 @@ function feishuTableCellHtml(cell: Element): string {
     ? lines.map((line) => Array.from(line.childNodes).map(feishuInlineHtml).join('').trim())
     : [Array.from(cell.childNodes).map(feishuInlineHtml).join('').trim()];
   return parts.filter(Boolean).join('<br>');
+}
+
+const LIST_SELECTOR = '[data-block-type="bullet"], [data-block-type="ordered"], [data-block-type="todo"]';
+const LIST_MARKERS = ['•', '◦', '▪', '▫', '●', '○'];
+const FEISHU_FULL_BLOCK_SELECTOR =
+  '[data-block-id], [data-record-id], figure, img, iframe, video, [class*="image" i]';
+const FEISHU_BOARD_SELECTOR = [
+  '.docx-page-block [data-block-type="whiteboard"]',
+  '.docx-page-block .docx-whiteboard-block',
+  '.docx-page-block [data-block-type="board"]',
+  '.docx-page-block .docx-board-block',
+].join(', ');
+const FEISHU_ISV_SELECTOR = [
+  '.docx-page-block [data-block-type="isv"]',
+  '.docx-page-block .docx-isv-block',
+].join(', ');
+
+function stripLeadingListMarker(html: string): string {
+  let out = html.trim();
+  let changed = true;
+  while (changed) {
+    changed = false;
+    out = out.replace(/^(&nbsp;|\s)+/, '');
+    for (const marker of LIST_MARKERS) {
+      if (out.startsWith(marker)) {
+        out = out.slice(marker.length).trimStart();
+        changed = true;
+      }
+    }
+  }
+  return out;
+}
+
+function closestListBlock(el: Element): Element | null {
+  return el.closest(LIST_SELECTOR);
+}
+
+function listLineHtml(el: Element): string {
+  const lines = Array.from(el.querySelectorAll('.ace-line'));
+  const own = lines.find((line) => closestListBlock(line) === el);
+  const source = own || meaningfulContent(el);
+  return stripLeadingListMarker(Array.from(source.childNodes).map(feishuInlineHtml).join('').trim());
+}
+
+function directChildListBlocks(el: Element): HTMLElement[] {
+  return Array.from(el.querySelectorAll<HTMLElement>(LIST_SELECTOR)).filter((child) => {
+    if (child === el) return false;
+    const parent = child.parentElement?.closest(LIST_SELECTOR);
+    return parent === el;
+  });
+}
+
+function directOwnedMediaBlocks(el: Element): HTMLElement[] {
+  const candidates = Array.from(
+    el.querySelectorAll<HTMLElement>(
+      'figure, img, iframe, video, [data-zhaoji-board], [data-zhaoji-isv], [class*="image" i]',
+    ),
+  ).filter((media) => {
+    if (media.closest('table')) return false;
+    if (media.closest('.ace-line')) return false;
+    return media.closest(LIST_SELECTOR) === el;
+  });
+  return outermostElements(candidates) as HTMLElement[];
+}
+
+function cleanListMediaClone(media: HTMLElement): HTMLElement {
+  const clone = media.cloneNode(true) as HTMLElement;
+  clone
+    .querySelectorAll('button, svg, [role="button"], [contenteditable="true"], .docx-block-zero-space')
+    .forEach((node) => node.remove());
+  return clone;
+}
+
+function hasUsableImageSource(el: Element): boolean {
+  return Array.from(el.querySelectorAll<HTMLImageElement>('img')).some((img) =>
+    !!(img.getAttribute('src') || img.getAttribute('data-src') || img.getAttribute('srcset')),
+  );
+}
+
+function isLikelyLoadingVisualBlock(el: HTMLElement): boolean {
+  const text = stripZeroWidth(el.textContent || '').replace(/\s+/g, '').trim();
+  const cls = `${el.className || ''} ${el.getAttribute('class') || ''}`.toLowerCase();
+  const hasLoadingNode = !!el.querySelector(
+    '[class*="loading" i], [class*="spinner" i], [class*="skeleton" i], [class*="placeholder" i], [aria-busy="true"]',
+  );
+  return !hasUsableImageSource(el) && text.length <= 12 && (hasLoadingNode || /loading|spinner|skeleton|placeholder/.test(cls));
+}
+
+function safeQueryElement(selector?: string): HTMLElement | null {
+  if (!selector) return null;
+  try {
+    return document.querySelector<HTMLElement>(selector);
+  } catch {
+    return null;
+  }
+}
+
+function listTagForKind(kind: string): 'ul' | 'ol' {
+  return kind === 'ordered' ? 'ol' : 'ul';
+}
+
+function buildListItem(doc: Document, el: HTMLElement): HTMLLIElement {
+  const li = doc.createElement('li');
+  const kind = feishuBlockKind(el);
+  const checked =
+    kind === 'todo' &&
+    (el.getAttribute('aria-checked') === 'true' || /checked|completed|done/.test(`${el.className}`));
+  const line = listLineHtml(el);
+  li.innerHTML = kind === 'todo' ? `${checked ? '[x]' : '[ ]'} ${line}`.trim() : line;
+
+  const groups: Array<{ tag: 'ul' | 'ol'; items: HTMLElement[] }> = [];
+  for (const child of directChildListBlocks(el)) {
+    const tag = listTagForKind(feishuBlockKind(child));
+    const last = groups[groups.length - 1];
+    if (last?.tag === tag) last.items.push(child);
+    else groups.push({ tag, items: [child] });
+  }
+  for (const group of groups) {
+    const list = doc.createElement(group.tag);
+    for (const child of group.items) list.appendChild(buildListItem(doc, child));
+    li.appendChild(list);
+  }
+  for (const media of directOwnedMediaBlocks(el)) {
+    const p = doc.createElement('p');
+    p.appendChild(cleanListMediaClone(media));
+    li.appendChild(p);
+  }
+  return li;
+}
+
+function buildListFromTopBlocks(doc: Document, blocks: HTMLElement[]): HTMLOListElement | HTMLUListElement {
+  const firstKind = feishuBlockKind(blocks[0]);
+  const list = doc.createElement(listTagForKind(firstKind));
+  for (const block of blocks) list.appendChild(buildListItem(doc, block));
+  return list;
+}
+
+function areAdjacentTopListBlocks(prev: HTMLElement, next: HTMLElement): boolean {
+  return prev.parentElement === next.parentElement && prev.nextElementSibling === next;
+}
+
+function normalizeFeishuLists(doc: Document, root: Element): void {
+  const all = Array.from(root.querySelectorAll<HTMLElement>(LIST_SELECTOR));
+  const top = all.filter((el) => !el.parentElement?.closest(LIST_SELECTOR));
+  const consumed = new Set<HTMLElement>();
+  let i = 0;
+  while (i < top.length) {
+    const start = top[i];
+    if (!start.isConnected || consumed.has(start)) {
+      i++;
+      continue;
+    }
+    const tag = listTagForKind(feishuBlockKind(start));
+    const group: HTMLElement[] = [];
+    while (i < top.length && listTagForKind(feishuBlockKind(top[i])) === tag) {
+      const current = top[i];
+      const previous = group[group.length - 1];
+      if (previous && !areAdjacentTopListBlocks(previous, current)) break;
+      if (current.isConnected && !consumed.has(current)) group.push(current);
+      i++;
+    }
+    if (!group.length) continue;
+    const list = buildListFromTopBlocks(doc, group);
+    group[0].replaceWith(list);
+    for (const block of group.slice(1)) block.remove();
+    for (const block of group) consumed.add(block);
+  }
 }
 
 function readTableColumnWidths(table: HTMLTableElement): number[] {
@@ -475,6 +688,8 @@ interface FeishuBoardCapture {
   blockId: string;
   index: number;
   url: string;
+  alt: string;
+  kind: 'board' | 'isv';
 }
 
 interface FeishuCodeCapture {
@@ -506,9 +721,47 @@ function dataUrlImage(dataUrl: string): Promise<HTMLImageElement> {
   });
 }
 
-async function cropVisibleElement(el: HTMLElement): Promise<string | null> {
-  el.scrollIntoView({ block: 'center', inline: 'center' });
-  await new Promise((resolve) => setTimeout(resolve, 450));
+function isFeishuScreenshotOverlay(el: HTMLElement, target: HTMLElement): boolean {
+  if (el === target || target.contains(el) || el.contains(target)) return false;
+  const style = getComputedStyle(el);
+  if (style.position === 'fixed' || style.position === 'sticky') return true;
+
+  const marker = `${el.id || ''} ${el.className || ''} ${el.getAttribute('class') || ''}`.toLowerCase();
+  if (
+    /water[-_]?mark|watermark|wmk|print[-_]?mark/.test(marker) ||
+    /note-title|header-ssr|suite-title|page-block-header|doc-info/.test(marker)
+  ) {
+    return true;
+  }
+
+  if (style.position === 'absolute' || style.zIndex !== 'auto') {
+    const a = el.getBoundingClientRect();
+    const b = target.getBoundingClientRect();
+    return a.right > b.left && a.left < b.right && a.bottom > b.top && a.top < b.bottom;
+  }
+  return false;
+}
+
+function hideFeishuScreenshotOverlays(target: HTMLElement): () => void {
+  const changed: Array<{ el: HTMLElement; style: string | null }> = [];
+  for (const el of Array.from(document.querySelectorAll<HTMLElement>('body *'))) {
+    if (!isFeishuScreenshotOverlay(el, target)) continue;
+    changed.push({ el, style: el.getAttribute('style') });
+    el.style.setProperty('visibility', 'hidden', 'important');
+  }
+  return () => {
+    for (const item of changed.reverse()) {
+      if (item.style == null) item.el.removeAttribute('style');
+      else item.el.setAttribute('style', item.style);
+    }
+  };
+}
+
+async function cropVisibleElement(el: HTMLElement, scrollIntoView = true): Promise<string | null> {
+  if (scrollIntoView) {
+    el.scrollIntoView({ block: 'center', inline: 'center' });
+    await new Promise((resolve) => setTimeout(resolve, 450));
+  }
   const rect = el.getBoundingClientRect();
   const left = Math.max(0, rect.left);
   const top = Math.max(0, rect.top);
@@ -516,9 +769,12 @@ async function cropVisibleElement(el: HTMLElement): Promise<string | null> {
   const bottom = Math.min(window.innerHeight, rect.bottom);
   if (right - left < 40 || bottom - top < 40) return null;
 
-  const resp = (await chrome.runtime.sendMessage({
-    type: 'ZHAOJI_CLIPPER_CAPTURE_VISIBLE_TAB',
-  })) as CaptureVisibleTabResponse;
+  const restoreOverlays = hideFeishuScreenshotOverlays(el);
+  const resp = (await chrome.runtime
+    .sendMessage({
+      type: 'ZHAOJI_CLIPPER_CAPTURE_VISIBLE_TAB',
+    })
+    .finally(restoreOverlays)) as CaptureVisibleTabResponse;
   if (!resp?.ok) return null;
 
   const screenshot = await dataUrlImage(resp.dataUrl);
@@ -539,29 +795,98 @@ async function cropVisibleElement(el: HTMLElement): Promise<string | null> {
   return blob ? URL.createObjectURL(blob) : null;
 }
 
-/** 飞书画板无法转成 Markdown，将渲染结果裁剪为 PNG 并回填到原块位置。 */
-async function captureFeishuBoards(): Promise<FeishuBoardCapture[]> {
-  const origX = window.scrollX;
-  const origY = window.scrollY;
-  const out: FeishuBoardCapture[] = [];
-  const boards = Array.from(
-    document.querySelectorAll<HTMLElement>(
-      [
-        '.docx-page-block [data-block-type="whiteboard"]',
-        '.docx-page-block .docx-whiteboard-block',
-        '.docx-page-block [data-block-type="board"]',
-        '.docx-page-block .docx-board-block',
-      ].join(', '),
-    ),
-  );
-  for (const [index, board] of boards.slice(0, 12).entries()) {
-    const recordId = board.getAttribute('data-record-id') || '';
-    const blockId = board.getAttribute('data-block-id') || '';
-    const url = await cropVisibleElement(board).catch(() => null);
-    if (url) out.push({ recordId, blockId, index, url });
+async function captureFeishuVisualElement(
+  el: HTMLElement,
+  getTop: () => number,
+  setTop: (v: number) => void,
+  maxTop: () => number,
+): Promise<string | null> {
+  const initialTop = getTop();
+  const initialWindowX = window.scrollX;
+  const initialWindowY = window.scrollY;
+  let restoreOverlays: (() => void) | null = null;
+  try {
+    const firstRect = el.getBoundingClientRect();
+    const docTop = initialTop + firstRect.top;
+    const cssWidth = Math.min(window.innerWidth, Math.max(0, firstRect.right) - Math.max(0, firstRect.left));
+    const cssHeight = Math.min(3600, Math.max(0, firstRect.height));
+    if (cssWidth < 40 || cssHeight < 40) return null;
+
+    let canvas: HTMLCanvasElement | null = null;
+    let ctx: CanvasRenderingContext2D | null = null;
+    let scaleX = 1;
+    let scaleY = 1;
+    let coveredUntil = 0;
+    let guard = 0;
+    const margin = 72;
+    const topGuard = 96;
+
+    while (coveredUntil < cssHeight - 2 && guard++ < 12) {
+      const skipTop = coveredUntil > 0 ? topGuard : 0;
+      const targetTop = Math.max(0, Math.min(maxTop(), docTop + coveredUntil - margin - skipTop));
+      setTop(targetTop);
+      await new Promise((resolve) => setTimeout(resolve, 420));
+      restoreOverlays?.();
+      restoreOverlays = hideFeishuScreenshotOverlays(el);
+
+      const rect = el.getBoundingClientRect();
+      const left = Math.max(0, rect.left);
+      const right = Math.min(window.innerWidth, rect.right);
+      const visibleTop = Math.max(0, rect.top);
+      const visibleBottom = Math.min(window.innerHeight, rect.bottom, rect.top + cssHeight);
+      const usableTop = Math.min(visibleBottom, visibleTop + skipTop);
+      const visibleHeight = visibleBottom - usableTop;
+      const visibleWidth = right - left;
+      if (visibleWidth < 40 || visibleHeight < 40) break;
+
+      const resp = (await chrome.runtime.sendMessage({
+        type: 'ZHAOJI_CLIPPER_CAPTURE_VISIBLE_TAB',
+      })) as CaptureVisibleTabResponse;
+      if (!resp?.ok) break;
+
+      const screenshot = await dataUrlImage(resp.dataUrl);
+      scaleX = screenshot.naturalWidth / window.innerWidth;
+      scaleY = screenshot.naturalHeight / window.innerHeight;
+      if (!canvas) {
+        canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(cssWidth * scaleX));
+        canvas.height = Math.max(1, Math.round(cssHeight * scaleY));
+        ctx = canvas.getContext('2d');
+        if (!ctx) return null;
+      }
+
+      const visibleDocY = getTop() + usableTop;
+      const destY = Math.max(0, Math.round((visibleDocY - docTop) * scaleY));
+      const sourceX = Math.round(left * scaleX);
+      const sourceY = Math.round(usableTop * scaleY);
+      const sourceW = Math.max(1, Math.min(canvas.width, Math.round(visibleWidth * scaleX)));
+      const sourceH = Math.max(1, Math.round(visibleHeight * scaleY));
+      ctx!.drawImage(
+        screenshot,
+        sourceX,
+        sourceY,
+        sourceW,
+        sourceH,
+        0,
+        destY,
+        sourceW,
+        Math.min(sourceH, canvas.height - destY),
+      );
+
+      const nextCovered = visibleDocY + visibleHeight - docTop;
+      if (nextCovered <= coveredUntil + 8) break;
+      coveredUntil = nextCovered;
+    }
+
+    if (!canvas || coveredUntil < 40) return null;
+    const blob = await new Promise<Blob | null>((resolve) => canvas!.toBlob(resolve, 'image/png'));
+    return blob ? URL.createObjectURL(blob) : null;
+  } finally {
+    restoreOverlays?.();
+    setTop(initialTop);
+    window.scrollTo(initialWindowX, initialWindowY);
+    await new Promise((resolve) => setTimeout(resolve, 80));
   }
-  window.scrollTo(origX, origY);
-  return out;
 }
 
 function visibleLineKey(el: Element): string {
@@ -589,22 +914,6 @@ function collectVisibleCodeLines(scope: Element): Array<{ y: number; text: strin
   }
   const text = feishuCodeText(scope);
   return text ? [{ y: 0, text, key: text }] : [];
-}
-
-function hasScrollableVisibleCodeBlock(): boolean {
-  const hosts = outermostElements(
-    Array.from(document.querySelectorAll(FEISHU_CODE_BLOCK_SELECTORS.join(', '))).map(feishuCodeHost),
-  ) as HTMLElement[];
-  for (const host of hosts) {
-    const scroller =
-      (host.matches('.code-block-content, .ace_scroller, .cm-scroller, .monaco-scrollable-element')
-        ? host
-        : host.querySelector<HTMLElement>(
-            '.code-block-content, .ace_scroller, .cm-scroller, .monaco-scrollable-element',
-          )) || host;
-    if (scroller.scrollHeight > scroller.clientHeight + 8) return true;
-  }
-  return false;
 }
 
 function isCodeCopyControl(el: HTMLElement): boolean {
@@ -761,15 +1070,147 @@ async function captureScrollableCode(el: HTMLElement): Promise<string> {
   return text.trim() ? normalizeCodeText(text) : feishuCodeText(el);
 }
 
-/** 飞书代码块内部也可能虚拟滚动，必须逐块滚动采集，否则只会拿到第一屏代码。 */
-async function captureFeishuCodes(): Promise<FeishuCodeCapture[]> {
-  const origX = window.scrollX;
-  const origY = window.scrollY;
+interface FeishuFullCapture {
+  html: string;
+  boards: FeishuBoardCapture[];
+  codes: FeishuCodeCapture[];
+}
+
+interface CapturedFeishuBlock {
+  y: number;
+  html: string;
+  signature: string;
+}
+
+function feishuCapturedBlockSignature(sourceEl: HTMLElement): string {
+  const clone = sourceEl.cloneNode(true) as HTMLElement;
+  clone
+    .querySelectorAll('button, svg, [aria-hidden="true"], [contenteditable="false"]')
+    .forEach((n) => n.remove());
+  const text = stripZeroWidth(clone.textContent || '').replace(/\s+/g, ' ').trim();
+  const media = Array.from(clone.querySelectorAll<HTMLElement>('img, iframe, video, source'))
+    .map((n) => n.getAttribute('src') || n.getAttribute('data-src') || n.getAttribute('srcset') || '')
+    .filter(Boolean)
+    .join('|');
+  const sig = (text || media).replace(/\s+/g, ' ').trim();
+  return sig.slice(0, 1600);
+}
+
+function dedupeCapturedFeishuBlocks(blocks: CapturedFeishuBlock[]): CapturedFeishuBlock[] {
+  const kept: CapturedFeishuBlock[] = [];
+  const recent: Array<{ signature: string; y: number; index: number }> = [];
+  const exactSeen = new Set<string>();
+  for (const block of blocks) {
+    const sig = block.signature;
+    let duplicated = false;
+    let duplicateIndex = -1;
+    if (sig.length >= 6) {
+      if (sig.length >= 40 && exactSeen.has(sig)) {
+        duplicated = true;
+      }
+      for (const prev of recent) {
+        if (duplicated) break;
+        if (sig === prev.signature) {
+          duplicated = true;
+          duplicateIndex = prev.index;
+          break;
+        }
+        if (sig.length >= 30 && prev.signature.length >= sig.length && prev.signature.includes(sig)) {
+          duplicated = true;
+          duplicateIndex = prev.index;
+          break;
+        }
+        if (prev.signature.length >= 6 && sig.length >= 30 && sig.startsWith(prev.signature)) {
+          duplicated = true;
+          duplicateIndex = prev.index;
+          break;
+        }
+      }
+    }
+    if (duplicated) {
+      const prev = duplicateIndex >= 0 ? kept[duplicateIndex] : undefined;
+      if (prev && block.html.length > prev.html.length && sig.startsWith(prev.signature)) {
+        prev.html = block.html;
+        prev.signature = sig;
+        prev.y = Math.min(prev.y, block.y);
+        const recentPrev = recent.find((item) => item.index === duplicateIndex);
+        if (recentPrev) {
+          recentPrev.signature = sig;
+          recentPrev.y = prev.y;
+        }
+      }
+      continue;
+    }
+    kept.push(block);
+    if (sig) {
+      if (sig.length >= 40) exactSeen.add(sig);
+      recent.push({ signature: sig, y: block.y, index: kept.length - 1 });
+    }
+    if (recent.length > 100) recent.shift();
+  }
+  return kept;
+}
+
+function feishuFullSourceElement(el: HTMLElement, root: HTMLElement): HTMLElement {
+  const isMediaNode =
+    /^(IMG|IFRAME|VIDEO|FIGURE)$/.test(el.tagName) ||
+    !!el.querySelector('img, iframe, video');
+  if (isMediaNode) {
+    const ownerList = el.closest<HTMLElement>(LIST_SELECTOR);
+    if (ownerList && ownerList !== root) return ownerList;
+    return el;
+  }
+
+  let candidate: HTMLElement | null = el;
+  let parentBlock = candidate.parentElement?.closest<HTMLElement>('[data-block-id]') || null;
+  while (parentBlock && parentBlock !== root) {
+    if (parentBlock.getAttribute('data-block-type') === 'page') break;
+    candidate = parentBlock;
+    parentBlock = candidate.parentElement?.closest<HTMLElement>('[data-block-id]') || null;
+  }
+  return candidate;
+}
+
+function feishuBlockKey(sourceEl: HTMLElement, leafEl: HTMLElement, y: number): string {
+  const blockId =
+    sourceEl.getAttribute('data-block-id') ||
+    sourceEl.getAttribute('data-record-id') ||
+    leafEl.getAttribute('data-block-id') ||
+    leafEl.getAttribute('data-record-id') ||
+    '';
+  if (blockId) return blockId;
+
+  const text = (sourceEl.textContent || '').trim();
+  const media =
+    /^(IMG|IFRAME|VIDEO)$/.test(sourceEl.tagName)
+      ? sourceEl
+      : sourceEl.querySelector('img, iframe, video');
+  if (!text && media) {
+    const src = media.getAttribute('src') || media.getAttribute('data-src') || sourceEl.outerHTML.slice(0, 120);
+    return `media:${Math.round(y)}:${src}`;
+  }
+  return `${sourceEl.tagName}:${Math.round(y)}:${text.slice(0, 160)}`;
+}
+
+function visibleElementY(el: Element, base: number): number {
+  return Math.round(base + el.getBoundingClientRect().top);
+}
+
+async function captureFeishuFullContentOnce(contentSelector?: string): Promise<FeishuFullCapture> {
   const mainScroller = findFeishuDocumentScroller();
+  const picked = safeQueryElement(contentSelector);
+  const tooBroad =
+    !picked ||
+    picked === document.body ||
+    picked === document.documentElement ||
+    picked.tagName === 'HTML' ||
+    picked.tagName === 'BODY';
+  const root: HTMLElement = tooBroad ? mainScroller : picked;
   const isWin =
     mainScroller === document.scrollingElement ||
     mainScroller === document.documentElement ||
     mainScroller === document.body;
+
   const getTop = () => (isWin ? window.scrollY : mainScroller.scrollTop);
   const setTop = (v: number) =>
     isWin ? window.scrollTo(0, v) : (mainScroller.scrollTop = v);
@@ -779,44 +1220,123 @@ async function captureFeishuCodes(): Promise<FeishuCodeCapture[]> {
       ? document.scrollingElement!.scrollHeight - window.innerHeight
       : mainScroller.scrollHeight - mainScroller.clientHeight;
 
+  const origX = window.scrollX;
+  const origY = window.scrollY;
   const origTop = getTop();
-  const out: FeishuCodeCapture[] = [];
-  const seen = new Set<string>();
-  const captureVisibleHosts = async () => {
+  const blocks = new Map<string, CapturedFeishuBlock>();
+  const boards: FeishuBoardCapture[] = [];
+  const codes: FeishuCodeCapture[] = [];
+  const seenBoards = new Set<string>();
+  const seenCodes = new Set<string>();
+
+  const captureBlocks = () => {
+    const base = getTop();
+    const nodes = root.querySelectorAll<HTMLElement>(FEISHU_FULL_BLOCK_SELECTOR);
+    for (const el of Array.from(nodes)) {
+      if (el.querySelector(FEISHU_FULL_BLOCK_SELECTOR)) continue;
+      const sourceEl = feishuFullSourceElement(el, root);
+      const text = (sourceEl.textContent || '').trim();
+      const media =
+        /^(IMG|IFRAME|VIDEO)$/.test(sourceEl.tagName)
+          ? sourceEl
+          : sourceEl.querySelector('img, iframe, video');
+      if (!text && !media) continue;
+
+      const y = visibleElementY(sourceEl, base);
+      const key = feishuBlockKey(sourceEl, el, y);
+      const outerHTML = sourceEl.outerHTML;
+      const signature = feishuCapturedBlockSignature(sourceEl);
+      const prev = blocks.get(key);
+      if (!prev) {
+        blocks.set(key, { y, html: outerHTML, signature });
+      } else if (outerHTML.length > prev.html.length) {
+        prev.y = Math.min(prev.y, y);
+        prev.html = outerHTML;
+        prev.signature = signature;
+      } else {
+        prev.y = Math.min(prev.y, y);
+      }
+    }
+  };
+
+  const captureVisuals = async () => {
+    const base = getTop();
+    const candidates = [
+      ...Array.from(document.querySelectorAll<HTMLElement>(FEISHU_BOARD_SELECTOR)).map((el) => ({
+        el,
+        kind: 'board' as const,
+        alt: '飞书画板',
+      })),
+      ...Array.from(document.querySelectorAll<HTMLElement>(FEISHU_ISV_SELECTOR)).map((el) => ({
+        el,
+        kind: 'isv' as const,
+        alt: '飞书嵌入内容',
+      })),
+    ];
+    for (const item of candidates) {
+      if (!root.contains(item.el)) continue;
+      if (item.kind === 'isv' && hasUsableImageSource(item.el)) continue;
+      if (isLikelyLoadingVisualBlock(item.el)) continue;
+      const recordId = item.el.getAttribute('data-record-id') || '';
+      const blockId = item.el.getAttribute('data-block-id') || '';
+      const y = visibleElementY(item.el, base);
+      const key = recordId || blockId || `${item.kind}:${y}:${stripZeroWidth(item.el.textContent || '').slice(0, 60)}`;
+      if (seenBoards.has(key) || boards.length >= 24) continue;
+      const url = await captureFeishuVisualElement(item.el, getTop, setTop, maxTop).catch(() => null);
+      if (!url) continue;
+      seenBoards.add(key);
+      boards.push({ recordId, blockId, index: boards.length, url, alt: item.alt, kind: item.kind });
+    }
+  };
+
+  const captureCodes = async () => {
+    const base = getTop();
     const hosts = outermostElements(
       Array.from(document.querySelectorAll(FEISHU_CODE_BLOCK_SELECTORS.join(', '))).map(feishuCodeHost),
     ) as HTMLElement[];
     for (const host of hosts) {
+      if (!root.contains(host)) continue;
       const { recordId, blockId } = codeBlockId(host);
-      const key = codeCaptureKey(recordId, blockId, out.length);
-      if (seen.has(key)) continue;
-      seen.add(key);
-      host.scrollIntoView({ block: 'center', inline: 'nearest' });
-      await new Promise((resolve) => setTimeout(resolve, 160));
+      const y = visibleElementY(host, base);
+      const key = recordId || blockId || `code:${y}:${stripZeroWidth(host.textContent || '').slice(0, 80)}`;
+      if (seenCodes.has(key) || codes.length >= 80) continue;
+      seenCodes.add(key);
       const text = await captureScrollableCode(host).catch(() => feishuCodeText(host));
       if (!text.trim()) continue;
-      out.push({ recordId, blockId, index: out.length, text, language: feishuCodeLanguage(host) });
-      if (out.length >= 80) return;
+      codes.push({ recordId, blockId, index: codes.length, text, language: feishuCodeLanguage(host) });
     }
   };
 
+  const captureCurrentScreen = async () => {
+    captureBlocks();
+    await captureVisuals();
+    await captureCodes();
+  };
+
   setTop(0);
-  await new Promise((resolve) => setTimeout(resolve, 300));
-  await captureVisibleHosts();
+  await new Promise((resolve) => setTimeout(resolve, 400));
+  await captureCurrentScreen();
 
   let guard = 0;
   let lastTop = -1;
-  while (getTop() < maxTop() - 2 && guard++ < 800 && out.length < 80) {
+  while (getTop() < maxTop() - 2 && guard++ < 3000) {
     setTop(getTop() + viewH * 0.8);
     await new Promise((resolve) => setTimeout(resolve, 220));
-    await captureVisibleHosts();
+    await captureCurrentScreen();
     if (getTop() === lastTop) break;
     lastTop = getTop();
   }
-  await captureVisibleHosts();
+  await new Promise((resolve) => setTimeout(resolve, 350));
+  await captureCurrentScreen();
   setTop(origTop);
   window.scrollTo(origX, origY);
-  return out;
+
+  const ordered = dedupeCapturedFeishuBlocks([...blocks.values()].sort((a, b) => a.y - b.y));
+  return {
+    html: ordered.length ? `<div>${ordered.map((b) => b.html).join('\n')}</div>` : '',
+    boards,
+    codes,
+  };
 }
 
 /**
@@ -835,7 +1355,20 @@ function normalizeFeishuHtml(
 
   const fallbackBoards = Array.from(
     root.querySelectorAll(
-      '[data-block-type="whiteboard"], .docx-whiteboard-block, [data-block-type="board"], .docx-board-block',
+      [
+        '[data-block-type="whiteboard"]',
+        '.docx-whiteboard-block',
+        '[data-block-type="board"]',
+        '.docx-board-block',
+      ].join(', '),
+    ),
+  );
+  const fallbackIsvs = Array.from(
+    root.querySelectorAll(
+      [
+        '[data-block-type="isv"]',
+        '.docx-isv-block',
+      ].join(', '),
     ),
   );
   for (const board of boards) {
@@ -844,13 +1377,18 @@ function normalizeFeishuHtml(
       : board.blockId
         ? `[data-block-id="${CSS.escape(board.blockId)}"]`
         : '';
-    const el = (selector ? root.querySelector(selector) : null) || fallbackBoards[board.index] || null;
+    const fallback = board.kind === 'isv' ? fallbackIsvs : fallbackBoards;
+    const el = (selector ? root.querySelector(selector) : null) || fallback[board.index] || null;
     if (!el) continue;
     const img = doc.createElement('img');
     img.setAttribute('src', board.url);
-    img.setAttribute('alt', '飞书画板');
+    img.setAttribute('alt', board.alt || '飞书画板');
     el.replaceWith(img);
   }
+
+  // Remaining ISV/mini-app blocks have no screenshot (usually because the user
+  // chose normal capture, not full capture). Do not keep duplicated iframe links.
+  root.querySelectorAll('[data-block-type="isv"], .docx-isv-block').forEach((n) => n.remove());
 
   const codeByKey = new Map<string, FeishuCodeCapture>();
   for (const code of codes) {
@@ -884,6 +1422,7 @@ function normalizeFeishuHtml(
   }
 
   normalizeFeishuTables(doc, root);
+  normalizeFeishuLists(doc, root);
 
   // 先处理外层块；替换后原子节点会脱离文档，避免同一块被重复规整。
   const blocks = Array.from(root.querySelectorAll('[data-block-type]'));
@@ -989,10 +1528,134 @@ function cleanFeishuMarkdown(md: string): string {
       continue;
     }
     const t = line.replace(/^[-*>\s]+/, '').trim();
+    if (t.startsWith('[▶ 嵌入内容](')) {
+      continue;
+    }
     if (!t || !isFeishuJunk(t)) filtered.push(line);
   }
   s = filtered.join('\n');
   return s.replace(/\n{3,}/g, '\n\n').trim();
+}
+
+function markdownBlockSignature(block: string): string {
+  return stripZeroWidth(block)
+    .replace(/!\[[^\]]*\]\([^)]+\)/g, '![img]')
+    .replace(/\[\[[^|\]]+(?:\|[^\]]+)?\]\]/g, '[[img]]')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/^[ \t>*-]+/gm, '')
+    .replace(/[*_`~]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 1200);
+}
+
+function meaningfulRepeatBlock(sig: string): boolean {
+  if (/^!\[img\]/.test(sig) || /^\[\[img\]\]/.test(sig)) return true;
+  return sig.length >= 8;
+}
+
+function dedupeFeishuMarkdownRepeats(md: string): string {
+  const blocks = md
+    .split(/\n{2,}/)
+    .map((block) => block.trim())
+    .filter(Boolean);
+  if (blocks.length < 4) return md;
+
+  const sigs = blocks.map(markdownBlockSignature);
+  const removed = new Set<number>();
+  const seen = new Map<string, number>();
+  const maxRun = 8;
+
+  for (let i = 0; i < blocks.length; i++) {
+    if (removed.has(i) || !meaningfulRepeatBlock(sigs[i])) continue;
+
+    let bestLen = 0;
+    for (let len = Math.min(maxRun, blocks.length - i); len >= 2; len--) {
+      const run = sigs.slice(i, i + len);
+      if (run.some((sig) => !meaningfulRepeatBlock(sig))) continue;
+      const total = run.reduce((sum, sig) => sum + sig.length, 0);
+      if (total < 80) continue;
+      const key = run.join('\n---\n');
+      if (seen.has(key)) {
+        bestLen = len;
+        break;
+      }
+    }
+
+    if (bestLen) {
+      for (let j = i; j < i + bestLen; j++) removed.add(j);
+      i += bestLen - 1;
+      continue;
+    }
+
+    for (let len = 2; len <= Math.min(maxRun, blocks.length - i); len++) {
+      const run = sigs.slice(i, i + len);
+      if (run.some((sig) => !meaningfulRepeatBlock(sig))) continue;
+      const total = run.reduce((sum, sig) => sum + sig.length, 0);
+      if (total < 80) continue;
+      const key = run.join('\n---\n');
+      if (!seen.has(key)) seen.set(key, i);
+    }
+  }
+
+  if (!removed.size) return md;
+  return blocks.filter((_block, index) => !removed.has(index)).join('\n\n').trim();
+}
+
+function markdownListItem(line: string): { indent: number; text: string } | null {
+  const m = line.match(/^(\s*)(?:[-*+]|\d+[.)])\s+(.+)$/);
+  if (!m) return null;
+  return {
+    indent: m[1].replace(/\t/g, '    ').length,
+    text: m[2].trim(),
+  };
+}
+
+function normalizeMarkdownListSubtree(lines: string[]): string {
+  return lines
+    .join('\n')
+    .replace(/!\[[^\]]*\]\([^)]+\)/g, '![img]')
+    .replace(/\[\[[^|\]]+(?:\|[^\]]+)?\]\]/g, '[[img]]')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/^[ \t]+/gm, '')
+    .replace(/[*_`~]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 2400);
+}
+
+function dedupeFeishuListSubtrees(md: string): string {
+  const lines = md.split('\n');
+  const removed = new Set<number>();
+  const seen = new Map<string, number>();
+
+  for (let i = 0; i < lines.length; i++) {
+    if (removed.has(i)) continue;
+    const item = markdownListItem(lines[i]);
+    if (!item || item.text.length < 6) continue;
+
+    let end = i + 1;
+    while (end < lines.length) {
+      const next = markdownListItem(lines[end]);
+      if (next && next.indent <= item.indent) break;
+      end++;
+    }
+    if (end <= i + 1) continue;
+
+    const subtree = lines.slice(i, end);
+    const signature = normalizeMarkdownListSubtree(subtree);
+    if (signature.length < 80) continue;
+    const key = `${markdownBlockSignature(item.text)}:${signature}`;
+    if (seen.has(key)) {
+      for (let j = i; j < end; j++) removed.add(j);
+      i = end - 1;
+      continue;
+    }
+    seen.set(key, i);
+  }
+
+  if (!removed.size) return md;
+  return lines.filter((_line, index) => !removed.has(index)).join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
 // ===== 并排图片：把飞书里并排的图，在 Obsidian 里也排成同一行 =====
@@ -1082,7 +1745,16 @@ function isGenericTitle(t: string): boolean {
 const TITLE_TAIL_WORDS = ['分享', '编辑', '更多', '复制链接', '收藏'];
 
 function feishuDocTitle(): string {
-  const el = document.querySelector('.wiki-suite-title, .note-title__input-container, .note-title');
+  const el = document.querySelector(
+    [
+      '#ssrHeaderTitle',
+      '.note-title__input.disabled',
+      '.note-title__input',
+      '.wiki-suite-title',
+      '.note-title__input-container',
+      '.note-title',
+    ].join(', '),
+  );
   if (!el) return '';
   const clone = el.cloneNode(true) as HTMLElement;
   clone.querySelectorAll('button, a, svg, [role="button"]').forEach((n) => n.remove());
@@ -1128,30 +1800,30 @@ function bestFeishuTitle(parsedTitle: string): string {
 async function extractFeishu(ctx: ExtractContext, sel: string): Promise<ExtractedPage> {
   await waitForFeishuTitle(); // 标题未加载完时（显示 Docs）先等一下，避免文件名取到占位
   const scopeSelector = scopedFeishuSelector(sel);
-  const boards = ctx.fullCapture ? await captureFeishuBoards() : [];
-  const needsCodeCapture = ctx.fullCapture && hasScrollableVisibleCodeBlock();
-  const codes = needsCodeCapture ? await captureFeishuCodes() : [];
   const parsed = await parseWithSelector(ctx.url, scopeSelector || sel);
-  const defuddleMd = cleanFeishuMarkdown(feishuHtmlToMarkdown(parsed.content || '', boards, codes));
+  const defuddleMd = cleanFeishuMarkdown(feishuHtmlToMarkdown(parsed.content || '', [], []));
 
   // 完整抓取：把滚动收集“限定在正文容器内”，排除目录/导航/侧栏/通知等
   let contentMarkdown = defuddleMd;
   if (ctx.fullCapture) {
     const scope = scopeSelector || scopedFeishuSelector(parsed.debug?.contentSelector || '');
-    const fullHtml = await captureFullContent(scope, '[data-block-id], [data-record-id]');
-    const fullMd = cleanFeishuMarkdown(feishuHtmlToMarkdown(fullHtml, boards, codes));
+    const full = await captureFeishuFullContentOnce(scope);
+    const fullMd = dedupeFeishuMarkdownRepeats(
+      cleanFeishuMarkdown(feishuHtmlToMarkdown(full.html, full.boards, full.codes)),
+    );
     // Feishu's Defuddle result often includes comments, recommendations, and
     // footer UI. That noisy fallback can be longer than the scoped full capture,
     // so length is not a reliable quality signal here. In full-capture mode,
     // prefer the scoped result when it is substantive; it is the only path that
     // can replace virtualized code blocks with the separately collected text.
-    if (fullMd.trim() && (codes.length || fullMd.length >= Math.max(80, defuddleMd.length * 0.25))) {
+    if (fullMd.trim() && (full.codes.length || fullMd.length >= Math.max(80, defuddleMd.length * 0.25))) {
       contentMarkdown = fullMd;
     }
   }
 
   // 并排图片：把"同一行连续多张图"加宽度排成并排（仅命中并排行，普通内容不动）
   contentMarkdown = groupInlineImages(contentMarkdown);
+  contentMarkdown = dedupeFeishuListSubtrees(contentMarkdown);
 
   // 标题：优先非占位标题（避免抓到加载中的 "Docs"），并去 " - 飞书云文档" 后缀
   const cleanTitle = bestFeishuTitle(parsed.title);
