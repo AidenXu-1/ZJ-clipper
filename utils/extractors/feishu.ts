@@ -712,6 +712,13 @@ function codeBlockId(el: Element): { recordId: string; blockId: string } {
   };
 }
 
+function normalizeCodePresenceText(text: string): string {
+  return stripZeroWidth(text)
+    .replace(/\u00A0/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function dataUrlImage(dataUrl: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -919,7 +926,11 @@ function collectVisibleCodeLines(scope: Element): Array<{ y: number; text: strin
 function isCodeCopyControl(el: HTMLElement): boolean {
   const text = stripZeroWidth(el.textContent || '').replace(/\s+/g, '').trim();
   const aria = stripZeroWidth(
-    el.getAttribute('aria-label') || el.getAttribute('title') || el.getAttribute('data-tooltip') || '',
+    el.getAttribute('aria-label') ||
+      el.getAttribute('title') ||
+      el.getAttribute('data-tooltip') ||
+      el.getAttribute('data-lark-tooltip') ||
+      '',
   )
     .replace(/\s+/g, '')
     .trim();
@@ -928,24 +939,46 @@ function isCodeCopyControl(el: HTMLElement): boolean {
 }
 
 function findCodeCopyButton(el: HTMLElement): HTMLElement | null {
+  const selectors = [
+    'button',
+    '[role="button"]',
+    '[class*="copy" i]',
+    '[class*="clipboard" i]',
+    '[aria-label*="copy" i]',
+    '[title*="copy" i]',
+    '[data-tooltip*="copy" i]',
+    '[aria-label*="复制"]',
+    '[title*="复制"]',
+    '[data-tooltip*="复制"]',
+    '[data-lark-tooltip*="复制"]',
+  ].join(', ');
   const candidates = Array.from(
-    el.querySelectorAll<HTMLElement>(
-      [
-        'button',
-        '[role="button"]',
-        '[class*="copy" i]',
-        '[class*="clipboard" i]',
-        '[aria-label*="copy" i]',
-        '[title*="copy" i]',
-      ].join(', '),
-    ),
+    el.querySelectorAll<HTMLElement>(selectors),
   );
   return candidates.find(isCodeCopyControl) || null;
 }
 
 async function tryCopyCodeText(el: HTMLElement): Promise<string> {
+  const documentScroller = findFeishuDocumentScroller();
+  const originalDocumentTop = documentScroller.scrollTop;
+  const originalWindowX = window.scrollX;
+  const originalWindowY = window.scrollY;
+  const restoreScroll = () => {
+    documentScroller.scrollTop = originalDocumentTop;
+    window.scrollTo(originalWindowX, originalWindowY);
+  };
+
+  el.scrollIntoView({ block: 'center', inline: 'nearest' });
+  for (const type of ['mouseenter', 'mouseover']) {
+    el.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, view: window }));
+  }
+  await new Promise((resolve) => setTimeout(resolve, 120));
+
   const btn = findCodeCopyButton(el);
-  if (!btn) return '';
+  if (!btn) {
+    restoreScroll();
+    return '';
+  }
 
   let copied = '';
   const onCopy = (ev: ClipboardEvent) => {
@@ -962,6 +995,9 @@ async function tryCopyCodeText(el: HTMLElement): Promise<string> {
 
   document.addEventListener('copy', onCopy, true);
   try {
+    for (const type of ['mouseenter', 'mouseover', 'mousedown', 'mouseup']) {
+      btn.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, view: window }));
+    }
     btn.click();
     await new Promise((resolve) => setTimeout(resolve, 450));
     if (!copied.trim()) {
@@ -980,9 +1016,36 @@ async function tryCopyCodeText(el: HTMLElement): Promise<string> {
         // Clipboard restoration is best-effort; extraction must not fail here.
       }
     }
+    restoreScroll();
   }
 
   return copied;
+}
+
+function findScrollableCodeElement(el: HTMLElement): HTMLElement {
+  const preferred = el.matches('.code-block-content, .ace_scroller, .cm-scroller, .monaco-scrollable-element')
+    ? el
+    : el.querySelector<HTMLElement>('.code-block-content, .ace_scroller, .cm-scroller, .monaco-scrollable-element');
+  if (preferred && preferred.scrollHeight > preferred.clientHeight + 8) return preferred;
+
+  let best: HTMLElement = el;
+  let bestScore = el.scrollHeight - el.clientHeight;
+  for (const node of Array.from(el.querySelectorAll<HTMLElement>('*'))) {
+    if (node.clientHeight < 24) continue;
+    const score = node.scrollHeight - node.clientHeight;
+    if (score <= Math.max(8, bestScore)) continue;
+    const style = getComputedStyle(node);
+    const marker = `${node.className || ''} ${node.getAttribute('class') || ''}`.toLowerCase();
+    const looksScrollable =
+      style.overflowY === 'auto' ||
+      style.overflowY === 'scroll' ||
+      style.overflowY === 'overlay' ||
+      /scroll|scroller|code|content|editor/.test(marker);
+    if (!looksScrollable) continue;
+    best = node;
+    bestScore = score;
+  }
+  return best;
 }
 
 function isCodeScroller(el: Element): boolean {
@@ -1001,12 +1064,34 @@ function isCodeScroller(el: Element): boolean {
 }
 
 function findFeishuDocumentScroller(): HTMLElement {
+  // 优先查找包含正文编辑器的滚动容器
+  const editorContainer = document.querySelector<HTMLElement>(
+    '.page-main-item.editor, .editor-container, .docx-page-block',
+  );
+  if (editorContainer) {
+    // 向上查找最近的可滚动父元素
+    let parent: HTMLElement | null = editorContainer;
+    while (parent) {
+      const oy = getComputedStyle(parent).overflowY;
+      if (oy === 'auto' || oy === 'scroll' || oy === 'overlay') {
+        if (parent.scrollHeight > parent.clientHeight + 100) {
+          return parent;
+        }
+      }
+      parent = parent.parentElement;
+    }
+  }
+
+  // 回退：选择 scrollHeight 最大的滚动容器，但排除侧边栏
   let best: HTMLElement =
     (document.scrollingElement as HTMLElement) || document.documentElement;
   let bestScore = best.scrollHeight - best.clientHeight;
   for (const el of Array.from(document.querySelectorAll<HTMLElement>('*'))) {
     if (isCodeScroller(el)) continue;
     if (el.clientHeight < 200) continue;
+    // 排除明显的侧边栏容器（包含 "sidebar" 或 "tree" 类名）
+    const cls = (el.className || '').toLowerCase();
+    if (/sidebar|tree|nav|toc|directory/.test(cls)) continue;
     const oy = getComputedStyle(el).overflowY;
     if (oy !== 'auto' && oy !== 'scroll' && oy !== 'overlay') continue;
     const score = el.scrollHeight - el.clientHeight;
@@ -1022,12 +1107,7 @@ async function captureScrollableCode(el: HTMLElement): Promise<string> {
   const copied = await tryCopyCodeText(el).catch(() => '');
   if (copied.trim()) return copied;
 
-  const scroller =
-    (el.matches('.code-block-content, .ace_scroller, .cm-scroller, .monaco-scrollable-element')
-      ? el
-      : el.querySelector<HTMLElement>(
-          '.code-block-content, .ace_scroller, .cm-scroller, .monaco-scrollable-element',
-        )) || el;
+  const scroller = findScrollableCodeElement(el);
   const maxTop = () => Math.max(0, scroller.scrollHeight - scroller.clientHeight);
   if (scroller.scrollHeight <= scroller.clientHeight + 8) return feishuCodeText(el);
 
@@ -1158,6 +1238,11 @@ function feishuFullSourceElement(el: HTMLElement, root: HTMLElement): HTMLElemen
   if (isMediaNode) {
     const ownerList = el.closest<HTMLElement>(LIST_SELECTOR);
     if (ownerList && ownerList !== root) return ownerList;
+    const ownerBlock = el.closest<HTMLElement>('[data-block-id], [data-record-id]');
+    if (ownerBlock && ownerBlock !== root && root.contains(ownerBlock)) {
+      const kind = feishuBlockKind(ownerBlock);
+      if (kind !== 'page') return ownerBlock;
+    }
     return el;
   }
 
@@ -1326,8 +1411,16 @@ async function captureFeishuFullContentOnce(contentSelector?: string): Promise<F
     if (getTop() === lastTop) break;
     lastTop = getTop();
   }
-  await new Promise((resolve) => setTimeout(resolve, 350));
-  await captureCurrentScreen();
+  const tailTops = [
+    Math.max(0, maxTop() - viewH * 0.55),
+    Math.max(0, maxTop() - viewH * 0.25),
+    maxTop(),
+  ];
+  for (const top of tailTops) {
+    setTop(top);
+    await new Promise((resolve) => setTimeout(resolve, 280));
+    await captureCurrentScreen();
+  }
   setTop(origTop);
   window.scrollTo(origX, origY);
 
@@ -1386,9 +1479,13 @@ function normalizeFeishuHtml(
     el.replaceWith(img);
   }
 
-  // Remaining ISV/mini-app blocks have no screenshot (usually because the user
-  // chose normal capture, not full capture). Do not keep duplicated iframe links.
-  root.querySelectorAll('[data-block-type="isv"], .docx-isv-block').forEach((n) => n.remove());
+  // Remaining ISV/mini-app blocks have no screenshot. Preserve an explicit
+  // placeholder instead of silently dropping source content.
+  root.querySelectorAll('[data-block-type="isv"], .docx-isv-block').forEach((n) => {
+    const p = doc.createElement('p');
+    p.textContent = '[飞书嵌入内容：未能截图]';
+    n.replaceWith(p);
+  });
 
   const codeByKey = new Map<string, FeishuCodeCapture>();
   for (const code of codes) {
@@ -1494,6 +1591,19 @@ function normalizeFeishuHtml(
     el.replaceWith(mark);
   }
 
+  let existingCodeText = normalizeCodePresenceText(root.textContent || '');
+  for (const captured of codes) {
+    const codeText = normalizeCodePresenceText(captured.text);
+    if (!codeText || existingCodeText.includes(codeText)) continue;
+    const pre = doc.createElement('pre');
+    const code = doc.createElement('code');
+    if (captured.language) code.setAttribute('class', `language-${captured.language}`);
+    code.textContent = captured.text;
+    pre.appendChild(code);
+    root.appendChild(pre);
+    existingCodeText = `${existingCodeText} ${codeText}`.trim();
+  }
+
   return root.innerHTML;
 }
 
@@ -1566,6 +1676,21 @@ function dedupeFeishuMarkdownRepeats(md: string): string {
   const seen = new Map<string, number>();
   const maxRun = 8;
 
+  // 第一遍：检测单个块的重复（非连续重复）
+  const singleBlockSeen = new Map<string, number>();
+  for (let i = 0; i < blocks.length; i++) {
+    const sig = sigs[i];
+    if (!meaningfulRepeatBlock(sig) || sig.length < 80) continue;
+    const prevIndex = singleBlockSeen.get(sig);
+    if (prevIndex !== undefined) {
+      // 标记后出现的重复块为删除
+      removed.add(i);
+    } else {
+      singleBlockSeen.set(sig, i);
+    }
+  }
+
+  // 第二遍：检测连续重复块组
   for (let i = 0; i < blocks.length; i++) {
     if (removed.has(i) || !meaningfulRepeatBlock(sigs[i])) continue;
 
@@ -1614,8 +1739,9 @@ function markdownListItem(line: string): { indent: number; text: string } | null
 function normalizeMarkdownListSubtree(lines: string[]): string {
   return lines
     .join('\n')
-    .replace(/!\[[^\]]*\]\([^)]+\)/g, '![img]')
-    .replace(/\[\[[^|\]]+(?:\|[^\]]+)?\]\]/g, '[[img]]')
+    .replace(/!\[[^\]]*\]\([^)]+\)/g, '')
+    .replace(/!\[\[[^\]]+\]\]/g, '')
+    .replace(/\[\[[^|\]]+(?:\|[^\]]+)?\]\]/g, '')
     .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
     .replace(/^[ \t]+/gm, '')
     .replace(/[*_`~]/g, '')
@@ -1671,6 +1797,27 @@ function parseImgLine(line: string): { alt: string; url: string } | null {
   return m ? { alt: m[1].trim(), url: m[2] } : null;
 }
 
+/** 全局图片 URL 去重：同一 URL 的图片只保留首次出现，删除后续重复
+ *  解决 Grid 布局下同一图片在 Markdown 多个位置重复出现的问题 */
+function dedupeImagesByGlobalUrl(md: string): string {
+  const seen = new Set<string>();
+  const lines = md.split('\n');
+  const out: string[] = [];
+
+  for (const line of lines) {
+    const img = parseImgLine(line);
+    if (img) {
+      if (seen.has(img.url)) {
+        continue; // 跳过已出现的图片（URL 相同）
+      }
+      seen.add(img.url);
+    }
+    out.push(line);
+  }
+
+  return out.join('\n');
+}
+
 function groupInlineImages(md: string): string {
   const lines = md.split('\n');
   const out: string[] = [];
@@ -1685,6 +1832,7 @@ function groupInlineImages(md: string): string {
     // 从这张图起，向下收集"只被空行/百分比/图注隔开"的连续图片
     const group = [first];
     const alts = new Set([first.alt]);
+    const urls = new Set([first.url]);
     const captions: string[] = []; // 图注：合并后放到并排图下方保留，不丢
     let j = i + 1;
     while (j < lines.length) {
@@ -1695,7 +1843,10 @@ function groupInlineImages(md: string): string {
       }
       const img = parseImgLine(lines[j]);
       if (img) {
-        group.push(img);
+        if (!urls.has(img.url)) {
+          group.push(img);
+          urls.add(img.url);
+        }
         alts.add(img.alt);
         j++;
         continue;
@@ -1821,7 +1972,8 @@ async function extractFeishu(ctx: ExtractContext, sel: string): Promise<Extracte
     }
   }
 
-  // 并排图片：把"同一行连续多张图"加宽度排成并排（仅命中并排行，普通内容不动）
+  // 图片去重 + 并排图片：先全局去重（删除重复 URL），再并排合并（相邻图片合并成一行）
+  contentMarkdown = dedupeImagesByGlobalUrl(contentMarkdown);
   contentMarkdown = groupInlineImages(contentMarkdown);
   contentMarkdown = dedupeFeishuListSubtrees(contentMarkdown);
 

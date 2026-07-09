@@ -931,6 +931,90 @@ function diagnoseFeishu(): string {
   return lines.join('\n');
 }
 
+function diagnoseFeishuCodeBlocks(): string {
+  if (!/feishu\.cn|larksuite\.com|feishu\.boe/i.test(location.hostname)) return '';
+  const lines: string[] = [];
+  lines.push('=== 飞书代码块诊断（只读）===');
+  const hostSelector = [
+    '[data-block-type="code"]',
+    '[data-block-type="code_block"]',
+    '[data-block-type="codeblock"]',
+    '.docx-code-block',
+    '.code-block',
+    '.ace_editor',
+    '.cm-editor',
+    '.monaco-editor',
+  ].join(', ');
+  const lineSelector = [
+    '.ace_line',
+    '.ace-line',
+    '.cm-line',
+    '.view-line',
+    '.monaco-line',
+    '[data-code-line]',
+    '[class*="code-line"]',
+    '[data-slate-editor] > div',
+    '[data-zone-container][contenteditable] > div',
+    '.zone-container.text-editor > div',
+  ].join(', ');
+  const copySelector = [
+    'button',
+    '[role="button"]',
+    '[class*="copy" i]',
+    '[class*="clipboard" i]',
+    '[aria-label*="copy" i]',
+    '[title*="copy" i]',
+    '[data-tooltip*="copy" i]',
+    '[aria-label*="复制"]',
+    '[title*="复制"]',
+    '[data-tooltip*="复制"]',
+    '[data-lark-tooltip*="复制"]',
+  ].join(', ');
+  const hosts = Array.from(document.querySelectorAll<HTMLElement>(hostSelector))
+    .map((el) => (el.closest<HTMLElement>('[data-block-type="code"], [data-block-type="code_block"], [data-block-type="codeblock"], .docx-code-block, .code-block') || el))
+    .filter((el, index, arr) => arr.indexOf(el) === index)
+    .filter((el, _index, arr) => !arr.some((other) => other !== el && other.contains(el)));
+  lines.push(`代码块候选数: ${hosts.length}`);
+  hosts.slice(0, 30).forEach((host, index) => {
+    const rows = Array.from(host.querySelectorAll<HTMLElement>(lineSelector));
+    let bestScroller: HTMLElement = host;
+    let bestScore = host.scrollHeight - host.clientHeight;
+    for (const node of Array.from(host.querySelectorAll<HTMLElement>('*'))) {
+      const score = node.scrollHeight - node.clientHeight;
+      if (score > bestScore) {
+        bestScroller = node;
+        bestScore = score;
+      }
+    }
+    const copyCandidates = Array.from(host.querySelectorAll<HTMLElement>(copySelector)).filter((el) => {
+      const text = stripZeroWidth(el.textContent || '').replace(/\s+/g, '').trim();
+      const aria = stripZeroWidth(
+        el.getAttribute('aria-label') ||
+          el.getAttribute('title') ||
+          el.getAttribute('data-tooltip') ||
+          el.getAttribute('data-lark-tooltip') ||
+          '',
+      )
+        .replace(/\s+/g, '')
+        .trim();
+      const cls = `${el.className || ''}`.toLowerCase();
+      return text.includes('复制') || aria.includes('复制') || /copy|clipboard/.test(cls);
+    });
+    const text = stripZeroWidth(host.textContent || '').replace(/\s+\n/g, '\n').trim();
+    const textLines = text.split('\n').filter((line) => line.trim());
+    const scrollInfo = `${bestScroller.scrollHeight}x${bestScroller.clientHeight}`;
+    lines.push(
+      `[${index + 1}] ${describeEl(host)} type=${host.getAttribute('data-block-type') || ''} ` +
+        `record=${host.getAttribute('data-record-id') ? '有' : '无'} block=${host.getAttribute('data-block-id') ? '有' : '无'} ` +
+        `textChars=${text.length} domLines=${rows.length} textLines=${textLines.length} copyCandidates=${copyCandidates.length} ` +
+        `bestScroll=${scrollInfo} best=${describeEl(bestScroller)}`,
+    );
+    lines.push(`    first="${(textLines[0] || '').slice(0, 80)}"`);
+    lines.push(`    last ="${(textLines[textLines.length - 1] || '').slice(0, 80)}"`);
+  });
+  return lines.join('\n');
+}
+
 async function diagnoseFull(): Promise<string> {
   const lines: string[] = [];
   lines.push('=== 兆基clipper抓取诊断 ===');
@@ -952,6 +1036,7 @@ async function diagnoseFull(): Promise<string> {
     );
     lines.push(`实际正文Markdown长度: ${actualMd.length}`);
     lines.push(`实际正文Markdown图片数(![]): ${(actualMd.match(/!\[/g) || []).length}`);
+    lines.push(`实际正文Markdown代码块数(\`\`\`/2): ${Math.floor((actualMd.match(/```/g) || []).length / 2)}`);
     lines.push('--- 实际正文Markdown 前 800 字 ---');
     lines.push(actualMd.slice(0, 800));
     lines.push('--- 实际正文Markdown 末 200 字 ---');
@@ -1027,6 +1112,11 @@ async function diagnoseFull(): Promise<string> {
   if (feishuTrace) {
     lines.push('');
     lines.push(feishuTrace);
+  }
+  const feishuCodeTrace = diagnoseFeishuCodeBlocks();
+  if (feishuCodeTrace) {
+    lines.push('');
+    lines.push(feishuCodeTrace);
   }
   lines.push('');
   lines.push(diagnose());
