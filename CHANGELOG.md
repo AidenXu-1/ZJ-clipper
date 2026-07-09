@@ -1,5 +1,16 @@
 # Changelog
 
+## v4.0.1 - 2026-07-09
+
+飞书抓取重复问题修复版本。
+
+### 飞书抓取修复
+
+- **Grid 图片去重**：修复 Grid 布局下同一图片在 Markdown 多个位置重复出现的问题，新增 `dedupeImagesByGlobalUrl` 基于 URL 全局去重。
+- **滚动容器修复**：修复 `findFeishuDocumentScroller` 误判侧边栏滚动容器导致尾部内容遗漏（如第4个 callout）的问题，优先选择正文编辑器容器。
+- **非连续重复块去重**：`dedupeFeishuMarkdownRepeats` 新增单块签名去重，删除非连续位置的重复块。
+- **列表子树去重**：`normalizeMarkdownListSubtree` 移除图片和双链差异，正确识别内容相同的重复列表子树。
+
 ## v4.0.0 - 2026-06-30
 
 相较于 v3.0.0，本版本新增「一键同步飞书 / 存入飞书知识库」保存方式。
