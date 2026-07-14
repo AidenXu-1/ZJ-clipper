@@ -37,10 +37,12 @@
 
 ### 普通用户：下载成品包
 
-到 [Releases](https://github.com/AidenXu-1/ZJ-clipper/releases) 下载对应浏览器的 zip：
+到 [最新 Release](https://github.com/AidenXu-1/ZJ-clipper/releases/latest) 下载对应浏览器的 zip：
 
-- Chrome：最新 Release 中的 `zhaoji-clipper-*-chrome.zip`
-- Edge：最新 Release 中的 `zhaoji-clipper-*-edge.zip`
+- Chrome：[直接下载最新版](https://github.com/AidenXu-1/ZJ-clipper/releases/latest/download/zhaoji-clipper-chrome.zip)
+- Edge：[直接下载最新版](https://github.com/AidenXu-1/ZJ-clipper/releases/latest/download/zhaoji-clipper-edge.zip)
+
+这两个最新版直链的文件名保持固定；每次发布新 Release 后会自动指向新的安装包。带版本号的附件继续保留，用于历史归档和复现。
 
 下载后先解压 zip，再把解压后的文件夹加载到浏览器。
 
@@ -91,7 +93,7 @@ https://github.com/AidenXu-1/ZJ-clipper
 
 推荐顺序：
 
-1. 优先下载 Release 成品包：`*-chrome.zip` 或 `*-edge.zip`。
+1. 优先下载最新版成品包：`zhaoji-clipper-chrome.zip` 或 `zhaoji-clipper-edge.zip`。
 2. 解压 zip。
 3. 指引用户在浏览器扩展管理页加载解压后的文件夹。
 4. 只有在无法下载 Release 附件、或需要二次开发时，才从源码构建。

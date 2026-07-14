@@ -224,6 +224,7 @@ git push origin vX.Y.Z
 - 执行类型检查。
 - 构建 Chrome / Edge 安装包。
 - 创建 GitHub Release，或更新同标签 Release 的安装包。
+- 同时上传带版本号的历史归档和固定名称的最新版附件：`zhaoji-clipper-chrome.zip`、`zhaoji-clipper-edge.zip`。
 
 日常开发不要直接向 `main` 推送，也不需要维护长期 `develop` 分支。
 
@@ -352,6 +353,8 @@ npm run zip:edge
 
 - `zhaoji-clipper-<version>-chrome.zip`
 - `zhaoji-clipper-<version>-edge.zip`
+- `zhaoji-clipper-chrome.zip`（最新版固定直链）
+- `zhaoji-clipper-edge.zip`（最新版固定直链）
 
 ## 当前开放方向
 
