@@ -198,7 +198,7 @@ export const DEFAULT_SETTINGS: Settings = {
   tagBlocklist: [],
   unreadTag: '未学习',
   learnedTag: '已学习',
-  siteTagRules: [{ domain: 'woshipm.com', tag: 'PM' }],
+  siteTagRules: [],
   includeFrontmatter: true,
   customFields: [],
   frontmatterFields: {

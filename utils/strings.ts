@@ -185,8 +185,8 @@ export const T = {
   settingsReadingTagHint:
     '会写入独立的「学习状态」frontmatter 字段（不放进 tags，避免被下游 Agent 重写关键词时冲掉）。弹窗里勾选「本篇已学习」即在两者间切换。',
   settingsSiteTags: '网站标签规则',
-  settingsSiteTagsHint: '域名会匹配其全部子域名。例如 woshipm.com / PM。',
-  siteDomain: '域名，例如 woshipm.com',
+  settingsSiteTagsHint: '域名会匹配其全部子域名。例如 example.com / 阅读。',
+  siteDomain: '域名，例如 example.com',
   siteTag: '标签，例如 PM',
   addSiteRule: '+ 添加网站规则',
   settingsFrontmatter: '写入 frontmatter 属性',

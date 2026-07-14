@@ -5,6 +5,26 @@ updates:
     schedule:
       interval: monthly
     open-pull-requests-limit: 5
+    ignore:
+      # 这些大版本目前会破坏 WXT 0.19 构建或内容脚本 ASCII 约束。
+      # 升级前需要单独建立兼容分支并完成 docs/TESTING.md 回归。
+      - dependency-name: wxt
+        versions: [">= 0.20.0"]
+      - dependency-name: typescript
+        versions: [">= 6.0.0"]
+      - dependency-name: react
+        versions: [">= 19.0.0"]
+      - dependency-name: react-dom
+        versions: [">= 19.0.0"]
+      - dependency-name: "@types/react"
+        versions: [">= 19.0.0"]
+      - dependency-name: "@types/react-dom"
+        versions: [">= 19.0.0"]
+      # Defuddle 的小版本会改变正文提取结果，必须先跑站点级人工回归。
+      - dependency-name: defuddle
+        update-types:
+          - version-update:semver-minor
+          - version-update:semver-major
 
   - package-ecosystem: github-actions
     directory: /

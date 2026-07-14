@@ -1,5 +1,15 @@
 # 兆基clipper
 
+<p align="center">
+  <img src="./public/icon/128.png" width="96" alt="兆基clipper 图标" />
+</p>
+
+<p align="center">
+  <a href="https://github.com/AidenXu-1/ZJ-clipper/releases/latest"><img src="https://img.shields.io/github/v/release/AidenXu-1/ZJ-clipper?label=latest" alt="Latest Release" /></a>
+  <a href="https://github.com/AidenXu-1/ZJ-clipper/actions/workflows/ci.yml"><img src="https://github.com/AidenXu-1/ZJ-clipper/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+  <a href="./LICENSE"><img src="https://img.shields.io/badge/license-personal%20use-orange" alt="Personal Use License" /></a>
+</p>
+
 兆基clipper 是一款面向中文知识工作流的 Chrome / Edge 浏览器扩展，用来把网页内容精准剪藏成 Markdown，并保存到你的 **Obsidian 仓库**。
 
 它对标 Obsidian 官方 Web Clipper，但更偏向中文内容平台、多站点精准适配、本地图片落地和个人知识库归档。
@@ -43,6 +53,8 @@
 - Edge：[直接下载最新版](https://github.com/AidenXu-1/ZJ-clipper/releases/latest/download/zhaoji-clipper-edge.zip)
 
 这两个最新版直链的文件名保持固定；每次发布新 Release 后会自动指向新的安装包。带版本号的附件继续保留，用于历史归档和复现。
+
+体验包只包含浏览器扩展运行文件。首次安装不预设个人仓库、API Key、飞书凭证或网站标签规则，所有保存目标均由用户自行配置。
 
 下载后先解压 zip，再把解压后的文件夹加载到浏览器。
 
@@ -131,6 +143,8 @@ Edge 构建产物在 `.output/edge-mv3`。
 
 想继续改代码或让 Agent 接手开发，请先阅读 [`DEVELOPMENT.md`](./DEVELOPMENT.md)。
 
+完整回归范围见 [`docs/TESTING.md`](./docs/TESTING.md)。
+
 ```bash
 npm install        # 安装依赖
 npm run dev        # 开发模式（自动开带扩展的 Chrome，热更新）
@@ -185,6 +199,7 @@ utils/
   extract-core.ts    抓取共享层（Turndown/Defuddle 封装、滚动抓取、共享解析工具）
   types/strings/storage/filename/frontmatter/obsidian/rest/images/messaging/highlighter.ts
 public/icon/         扩展图标
+docs/                接力开发所需的测试与回归文档
 ```
 
 ## 仍在迭代
@@ -194,3 +209,5 @@ public/icon/         扩展图标
 ## 许可
 
 Copyright (c) 2026 Aiden. All rights reserved.
+
+官方编译版允许个人、非商业安装与使用；源码修改、再分发、重新打包和商业使用需要事先获得书面许可。详见 [`LICENSE`](./LICENSE)。
