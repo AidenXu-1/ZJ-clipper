@@ -137,7 +137,7 @@ Edge 构建产物在 `.output/edge-mv3`。
 - React + TypeScript
 - [Defuddle](https://github.com/kepano/defuddle)（正文提取，Obsidian 原版同款库）+ Turndown（HTML→Markdown）
 - 站点适配器注册表：每个平台一个文件，物理隔离，加新平台不影响其它
-- 保存：`obsidian://` URI（零配置）或 **Local REST API 插件**（超长不截断、可保存本地图片）二选一
+- 保存通道：Obsidian（`obsidian://` URI 或 **Local REST API 插件**）以及用户自己的**飞书知识库**
 
 ## 开发
 

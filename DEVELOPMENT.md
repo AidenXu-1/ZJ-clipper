@@ -4,7 +4,7 @@
 
 ## 项目定位
 
-兆基clipper 是一个 Chrome / Edge MV3 浏览器扩展，把网页内容提取为 Markdown，并保存到用户自己的 Obsidian 仓库。
+兆基clipper 是一个 Chrome / Edge MV3 浏览器扩展，把网页内容提取为 Markdown，并保存到用户自己的 Obsidian 仓库或飞书知识库。
 
 核心原则是 **capture-only**：
 
@@ -39,7 +39,7 @@
 - React + TypeScript：弹窗和设置页。
 - Defuddle：正文提取，通用网页兜底。
 - Turndown + GFM：HTML 转 Obsidian Markdown。
-- Obsidian 保存通道：`obsidian://` URI 或 Obsidian Local REST API。
+- 保存通道：Obsidian（`obsidian://` URI 或 Obsidian Local REST API）以及用户自己的飞书知识库。
 
 ## 目录职责
 
