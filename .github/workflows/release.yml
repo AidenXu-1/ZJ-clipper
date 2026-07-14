@@ -53,6 +53,14 @@ jobs:
         run: |
           node -e "const fs=require('fs');const p='.output/chrome-mv3/content-scripts/content.js';const b=fs.readFileSync(p);if([...b].some(x=>x>127)){console.error('content.js contains non-ASCII bytes');process.exit(1)}"
 
+      - name: Create stable latest aliases
+        shell: bash
+        run: |
+          cp ".output/zhaoji-clipper-${GITHUB_REF_NAME#v}-chrome.zip" \
+            ".output/zhaoji-clipper-chrome.zip"
+          cp ".output/zhaoji-clipper-${GITHUB_REF_NAME#v}-edge.zip" \
+            ".output/zhaoji-clipper-edge.zip"
+
       - name: Create or update GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -62,6 +70,8 @@ jobs:
           ASSETS=(
             ".output/zhaoji-clipper-${GITHUB_REF_NAME#v}-chrome.zip"
             ".output/zhaoji-clipper-${GITHUB_REF_NAME#v}-edge.zip"
+            ".output/zhaoji-clipper-chrome.zip"
+            ".output/zhaoji-clipper-edge.zip"
           )
 
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
