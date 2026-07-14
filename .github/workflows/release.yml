@@ -61,7 +61,7 @@ jobs:
           cp ".output/zhaoji-clipper-${GITHUB_REF_NAME#v}-edge.zip" \
             ".output/zhaoji-clipper-edge.zip"
 
-      - name: Create or update GitHub Release
+      - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -75,7 +75,8 @@ jobs:
           )
 
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" "${ASSETS[@]}" --clobber
+            echo "Release $GITHUB_REF_NAME already exists; refusing to overwrite immutable assets."
+            exit 1
           elif [[ -f "$NOTES_FILE" ]]; then
             gh release create "$GITHUB_REF_NAME" "${ASSETS[@]}" \
               --title "兆基clipper ${GITHUB_REF_NAME#v}" \
