@@ -41,6 +41,7 @@
 | X / Twitter | 单条 + 整串 thread + Article 长文 + 外链卡片 + 视频嵌入 + 互动 |
 | 微信公众号 | 正文 + 全部图片 |
 | Reddit | 帖子本体（不抓评论树）+ 图片/外链 + 互动 |
+| 知乎 | 专栏文章 + 单条回答 + 问题说明 + 单条想法（不抓评论与推荐） |
 | 其它网页 | Defuddle 通用提取兜底 |
 
 ## 安装
@@ -195,7 +196,7 @@ entrypoints/
   popup/             剪藏弹窗（React）
   options/           设置页（React）
 utils/
-  extractors/        ★站点适配器：bilibili/feishu/xiaohongshu/x/weixin/youtube/reddit/generic + index 注册表
+  extractors/        ★站点适配器：bilibili/feishu/xiaohongshu/x/weixin/youtube/reddit/zhihu/generic + index 注册表
   extract-core.ts    抓取共享层（Turndown/Defuddle 封装、滚动抓取、共享解析工具）
   types/strings/storage/filename/frontmatter/obsidian/rest/images/messaging/highlighter.ts
 public/icon/         扩展图标
@@ -204,7 +205,7 @@ docs/                接力开发所需的测试与回归文档
 
 ## 仍在迭代
 
-知乎适配器（探针就位待数据）、微博 / Medium、追加到 Daily Note 等。**不做** AI 摘要/总结、抖音（语义/转写活交下游 agent）。
+微博 / Medium、追加到 Daily Note 等。**不做** AI 摘要/总结、抖音（语义/转写活交下游 agent）。
 
 ## 许可
 

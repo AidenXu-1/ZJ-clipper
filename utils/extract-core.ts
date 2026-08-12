@@ -113,6 +113,7 @@ turndown.addRule('zhaojiClipperImages', {
     const src =
       el.getAttribute('data-src') ||
       el.getAttribute('data-original') ||
+      el.getAttribute('data-actualsrc') ||
       pickFromSrcset(el.getAttribute('srcset')) ||
       el.getAttribute('src') ||
       '';
