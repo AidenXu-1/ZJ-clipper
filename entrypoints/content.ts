@@ -657,6 +657,20 @@ function diagnoseZhihu(): string {
         `data-original=${(im.getAttribute('data-original') || '').slice(0, 40)}`,
     );
   }
+  // 新版专栏把封面图片渲染在 Post-Main 之外，文章根内只保留 itemprop=image。
+  const articleRoot = document.querySelector('.Post-Main');
+  const coverMeta = articleRoot
+    ?.querySelector('meta[itemprop="image"][content]')
+    ?.getAttribute('content');
+  const visibleCover = articleRoot?.previousElementSibling?.querySelector('img');
+  out.push(`  article cover meta: ${(coverMeta || '(无)').slice(0, 120)}`);
+  out.push(
+    `  article previous-sibling img: ${(
+      visibleCover?.getAttribute('src') ||
+      (visibleCover as HTMLImageElement | null)?.currentSrc ||
+      '(无)'
+    ).slice(0, 120)}`,
+  );
   return out.join('\n');
 }
 

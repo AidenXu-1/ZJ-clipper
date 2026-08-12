@@ -61,6 +61,20 @@
   box-sizing: border-box;
 }
 
+/*
+ * Chrome 会按页面的首选内容宽度自动计算扩展弹窗尺寸。长 URL 等可滚动表单值
+ * 可能把首选宽度推到浏览器的 800px 上限，因此必须约束真正参与测量的外壳。
+ * 同时不能让页面外壳负责纵向滚动，否则 Chrome 会在 420px 之外再加滚动条槽。
+ */
+html,
+body,
+#root {
+  width: 420px;
+  max-width: 420px;
+  max-height: 600px;
+  overflow: hidden;
+}
+
 body {
   margin: 0;
   font-family: -apple-system, 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
@@ -71,6 +85,9 @@ body {
 
 .zc-wrap {
   width: 420px;
+  max-height: 600px;
+  overflow-x: hidden;
+  overflow-y: auto;
   padding: 12px 14px 14px;
   display: flex;
   flex-direction: column;

@@ -360,7 +360,6 @@ npm run zip:edge
 
 ## 当前开放方向
 
-- 知乎适配器。
 - 微博、Medium 等更多平台适配器。
 - 追加到 Daily Note。
 - 自定义 frontmatter 字段模板变量。

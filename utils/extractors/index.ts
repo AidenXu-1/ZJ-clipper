@@ -10,6 +10,7 @@ import { xExtractor } from './x';
 import { weixinExtractor } from './weixin';
 import { youtubeExtractor } from './youtube';
 import { redditExtractor } from './reddit';
+import { zhihuExtractor } from './zhihu';
 import { genericExtractor } from './generic';
 
 // 顺序即优先级；genericExtractor 必须最后（其 match 永远 true）
@@ -21,6 +22,7 @@ const REGISTRY: SiteExtractor[] = [
   weixinExtractor,
   youtubeExtractor,
   redditExtractor,
+  zhihuExtractor,
   genericExtractor,
 ];
 
