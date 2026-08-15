@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { T } from '@/utils/strings';
 import { loadSettings, saveSettings, newProfileId } from '@/utils/storage';
 import { testRest } from '@/utils/rest';
@@ -21,6 +21,46 @@ function methodLabel(m: SaveMethod): string {
 }
 
 type FieldKey = keyof Settings['frontmatterFields'];
+
+type SettingsTab = 'vaults' | 'archive' | 'status' | 'props' | 'theme';
+
+const TAB_META: Array<{
+  key: SettingsTab;
+  label: string;
+  eyebrow: string;
+  description: string;
+}> = [
+  {
+    key: 'vaults',
+    label: '保存方式',
+    eyebrow: 'DESTINATIONS',
+    description: '分别配置 Obsidian 与飞书；剪藏时直接点击对应的保存按钮。',
+  },
+  {
+    key: 'archive',
+    label: '归档命名',
+    eyebrow: 'ARCHIVE RULES',
+    description: '统一笔记目录、附件位置与文件名，让长期归档保持整洁。',
+  },
+  {
+    key: 'status',
+    label: '学习状态',
+    eyebrow: 'READING FLOW',
+    description: '设置剪藏后的默认状态标签，连接阅读与复习流程。',
+  },
+  {
+    key: 'props',
+    label: '属性字段',
+    eyebrow: 'NOTE SCHEMA',
+    description: '选择写入笔记的属性，并补充适合自己工作流的自定义字段。',
+  },
+  {
+    key: 'theme',
+    label: '主题',
+    eyebrow: 'APPEARANCE',
+    description: '让 Nomo 跟随系统，或固定使用浅色与深色界面。',
+  },
+];
 
 /** 从仓库档取飞书配置（picker 与测试用） */
 function feishuCfg(
@@ -84,7 +124,7 @@ export function Options() {
   const [fzErr, setFzErr] = useState<{ id: string; msg: string }>({ id: '', msg: '' });
   const [fzLink, setFzLink] = useState<Record<string, string>>({}); // 粘贴的知识库/页面链接
   // 设置页分区：默认落在「保存目标」（飞书/Obsidian 配置都在这），避免一路下拉
-  const [tab, setTab] = useState<'vaults' | 'archive' | 'status' | 'props' | 'theme'>('vaults');
+  const [tab, setTab] = useState<SettingsTab>('vaults');
   // 仓库手风琴：当前展开编辑的仓库 id（折叠时只占一行，避免多仓库上下太长）
   const [openVault, setOpenVault] = useState('');
 
@@ -394,33 +434,44 @@ export function Options() {
     setTimeout(() => setSavedMsg(''), 1800);
   }
 
+  const currentTab = TAB_META.find((item) => item.key === tab) || TAB_META[0];
+
   return (
     <div className="zc-opt">
       <header className="zc-opt-head">
-        <img className="zc-opt-logo" src="/logo.png" alt="" />
-        <h1>{T.settingsTitle}</h1>
+        <img className="zc-opt-logo" src="/logo.png" alt="Nomo" />
+        <div className="zc-opt-brand">
+          <span className="zc-opt-kicker">NOMO / CLIPPER</span>
+          <h1>{T.settingsTitle}</h1>
+          <p>把网页整理成可以继续思考的笔记。</p>
+        </div>
       </header>
 
       <div className="zc-opt-body">
-        <nav className="zc-opt-nav">
-          {([
-            ['vaults', '保存目标'],
-            ['archive', '归档命名'],
-            ['status', '学习状态'],
-            ['props', '属性字段'],
-            ['theme', '主题'],
-          ] as const).map(([key, label]) => (
-            <button
-              key={key}
-              className={'zc-nav-item' + (tab === key ? ' on' : '')}
-              onClick={() => setTab(key)}
-            >
-              {label}
-            </button>
+        <nav className="zc-opt-nav" aria-label="设置分类">
+          <span className="zc-nav-label">保存</span>
+          {TAB_META.map((item, index) => (
+            <Fragment key={item.key}>
+              {index === 1 && <span className="zc-nav-label">内容</span>}
+              {index === 4 && <span className="zc-nav-label">外观</span>}
+              <button
+                className={'zc-nav-item' + (tab === item.key ? ' on' : '')}
+                aria-current={tab === item.key ? 'page' : undefined}
+                onClick={() => setTab(item.key)}
+              >
+                <span className="zc-nav-index">{String(index + 1).padStart(2, '0')}</span>
+                <span>{item.label}</span>
+              </button>
+            </Fragment>
           ))}
         </nav>
 
         <div className="zc-opt-main">
+          <section className="zc-page-intro" aria-labelledby="zc-page-title">
+            <span>{currentTab.eyebrow}</span>
+            <h2 id="zc-page-title">{currentTab.label}</h2>
+            <p>{currentTab.description}</p>
+          </section>
           {tab === 'theme' && (
             <div className="zc-group">
               <div className="zc-group-title">{T.settingsTheme}</div>
@@ -437,7 +488,11 @@ export function Options() {
                       checked={s.theme === val}
                       onChange={() => update('theme', val)}
                     />
-                    {label}
+                    <span className={`zc-theme-preview zc-theme-${val}`} aria-hidden="true">
+                      <i />
+                      <i />
+                    </span>
+                    <span className="zc-theme-label">{label}</span>
                   </label>
                 ))}
               </div>
@@ -586,8 +641,9 @@ export function Options() {
           const active = p.id === s.activeProfileId;
           const open = openVault === p.id;
           const dispName =
-            (p.saveMethod === 'feishu' ? p.feishuSpaceName || p.vaultName : p.vaultName) ||
-            T.profileVaultPlaceholder;
+            p.saveMethod === 'feishu'
+              ? p.feishuSpaceName || '飞书知识库'
+              : p.vaultName || T.profileVaultPlaceholder;
           return (
             <div
               className={'zc-vault-card' + (active ? ' on' : '') + (open ? ' open' : '')}
@@ -596,6 +652,7 @@ export function Options() {
               <button
                 type="button"
                 className="zc-vault-summary"
+                aria-expanded={open}
                 onClick={() => setOpenVault(open ? '' : p.id)}
                 title={open ? '点击收起' : '点击展开'}
               >
@@ -611,33 +668,35 @@ export function Options() {
               </button>
               {open && (
               <div className="zc-vault-body">
-              <label className="zc-l">{T.profileNameLabel}</label>
-              <input
-                className="zc-i"
-                value={p.vaultName}
-                placeholder={T.profileVaultPlaceholder}
-                onChange={(e) => updateProfile(p.id, { vaultName: e.target.value })}
-              />
+              {!pFeishu && (
+                <>
+                  <label className="zc-l">Obsidian 仓库名称</label>
+                  <input
+                    className="zc-i"
+                    value={p.vaultName}
+                    placeholder="必须与 Obsidian 左下角显示的仓库名完全一致"
+                    onChange={(e) => updateProfile(p.id, { vaultName: e.target.value })}
+                  />
+                  <p className="zc-hint">此处不是自定义显示名称；名称错误会导致 Obsidian 提示 Vault not found。</p>
+                </>
+              )}
 
-              <label className="zc-l zc-mt">{T.settingsSaveMethod}</label>
-              <div className="zc-method-cards">
-                {([
-                  ['uri', T.methodUriTitle, T.methodUriDesc],
-                  ['rest', T.methodRestTitle, T.methodRestDesc],
-                  ['feishu', T.methodFeishuTitle, T.methodFeishuDesc],
-                ] as const).map(([m, mt, md]) => (
+              <label className="zc-l zc-mt">{pFeishu ? '目标类型' : T.settingsSaveMethod}</label>
+              <div className={'zc-method-cards' + (pFeishu ? ' single' : '')}>
+                {(pFeishu
+                  ? ([['feishu', T.methodFeishuTitle, T.methodFeishuDesc]] as const)
+                  : ([
+                      ['uri', T.methodUriTitle, T.methodUriDesc],
+                      ['rest', T.methodRestTitle, T.methodRestDesc],
+                    ] as const)
+                ).map(([m, mt, md]) => (
                   <button
                     type="button"
                     key={m}
                     className={'zc-mcard' + (p.saveMethod === m ? ' on' : '')}
-                    onClick={() =>
-                      updateProfile(
-                        p.id,
-                        m === 'feishu'
-                          ? { saveMethod: 'feishu', feishuDomain: p.feishuDomain || 'feishu.cn' }
-                          : { saveMethod: m },
-                      )
-                    }
+                    aria-pressed={p.saveMethod === m}
+                    disabled={pFeishu}
+                    onClick={() => !pFeishu && updateProfile(p.id, { saveMethod: m })}
                   >
                     <span className="zc-mcard-radio" />
                     <span className="zc-mcard-text">
@@ -934,6 +993,7 @@ export function Options() {
                 )}
                 <button
                   className="zc-btn-danger"
+                  aria-label={`删除保存目标 ${dispName}`}
                   disabled={s.vaultProfiles.length <= 1}
                   onClick={() => removeProfile(p.id)}
                 >
@@ -951,14 +1011,15 @@ export function Options() {
         <p className="zc-hint">{T.settingsVaultNameHint}</p>
             </div>
           )}
+          <div className="zc-sticky-save">
+            <span className="zc-save-note" aria-live="polite">
+              {savedMsg || '设置保存在当前浏览器中'}
+            </span>
+            <button className="zc-btn" onClick={handleSave}>
+              {T.settingsSave}
+            </button>
+          </div>
         </div>
-      </div>
-
-      <div className="zc-sticky-save">
-        <button className="zc-btn" onClick={handleSave}>
-          {T.settingsSave}
-        </button>
-        {savedMsg && <span className="zc-ok">{savedMsg}</span>}
       </div>
     </div>
   );

@@ -30,7 +30,17 @@ export async function authorizeFeishuUser(cfg: FeishuConfig): Promise<FeishuOAut
 
   const redirectUri = feishuRedirectUri();
   const state = Math.random().toString(36).slice(2);
-  const scope = 'offline_access drive:file:upload drive:drive docs:document:import wiki:wiki';
+  const scope = [
+    'offline_access',
+    'drive:file:upload',
+    'drive:drive',
+    'docs:document:import',
+    'docs:document.media:upload',
+    'docx:document.block:convert',
+    'docx:document:create',
+    'docx:document:write_only',
+    'wiki:wiki',
+  ].join(' ');
   const url =
     `${apiBase(cfg.domain)}/open-apis/authen/v1/index` +
     `?client_id=${encodeURIComponent(cfg.appId.trim())}` +

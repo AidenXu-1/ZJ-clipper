@@ -36,6 +36,29 @@ export interface ExtractedPage {
   stats?: ClipStats;
 }
 
+/**
+ * 弹窗未保存草稿。只包含当前剪藏表单与目标标识，不得放入 API Key、
+ * OAuth token、Cookie、App Secret 或完整仓库配置。
+ */
+export interface ClipDraft {
+  version: 1;
+  sourceUrl: string;
+  updatedAt: number;
+  targetProfileId: string;
+  title: string;
+  body: string;
+  useSelection: boolean;
+  author: string;
+  published: string;
+  modified: string;
+  description: string;
+  learned: boolean;
+  folder: string;
+  filename: string;
+  vault: string;
+  saveImagesLocal: boolean;
+}
+
 /** 互动数据（归一化）：各平台把自己的指标映射到这些通用数字字段 */
 export interface ClipStats {
   views?: number; // 播放/浏览
@@ -67,6 +90,8 @@ export interface ClipProperties {
 /** 插件设置 */
 /** 保存方式：obsidian:// URI / Local REST API / 飞书知识库 */
 export type SaveMethod = 'uri' | 'rest' | 'feishu';
+/** 一次剪藏默认写入的目标；可同时选择多个。 */
+export type SaveDestination = 'obsidian' | 'feishu';
 
 /** 飞书数据中心：国内版 feishu.cn / 国际版 larksuite.com（决定 API 与打开链接域名） */
 export type FeishuDomain = 'feishu.cn' | 'larksuite.com';
@@ -136,6 +161,8 @@ export interface Settings {
   vaultProfiles: VaultProfile[];
   /** 当前生效的仓库档 id */
   activeProfileId: string;
+  /** 弹窗默认勾选的保存目标，可同时保存到 Obsidian 与飞书 */
+  defaultSaveTargets: SaveDestination[];
   /** 保存方式（= 当前生效档的镜像，保存/打开逻辑直接读它） */
   saveMethod: SaveMethod;
   /** 目标 Obsidian 仓库名（uri 方式用） */
@@ -185,6 +212,7 @@ export const DEFAULT_SETTINGS: Settings = {
   highlightFloatingButton: true,
   vaultProfiles: [],
   activeProfileId: '',
+  defaultSaveTargets: ['obsidian'],
   saveMethod: 'uri',
   vaultName: '',
   restBaseUrl: 'http://127.0.0.1:27123',
@@ -255,6 +283,67 @@ export interface SetHighlightFloatingButtonRequest {
   type: 'ZHAOJI_CLIPPER_SET_HIGHLIGHT_FLOATING';
   enabled: boolean;
 }
+
+/** B站当前播放时间点 */
+export interface BilibiliTimestampRequest {
+  type: 'ZHAOJI_CLIPPER_BILI_TIMESTAMP';
+}
+
+export type BilibiliTimestampResponse =
+  | { ok: true; seconds: number; label: string; url: string }
+  | { ok: false; error: string };
+
+/** 抖音当前播放器的媒体信息，交给本机转录助手处理。 */
+export interface DouyinMediaRequest {
+  type: 'NOMO_CLIPPER_DOUYIN_MEDIA';
+}
+
+export type DouyinMediaResponse =
+  | {
+      ok: true;
+      /** 当前视频的页面内媒体地址；抖音新版播放器通常返回 blob:。 */
+      mediaUrl: string;
+      pageUrl: string;
+      title: string;
+      duration: number;
+      /** 当前作品 ID；用于避免把抖音预加载的相邻视频误当成当前视频。 */
+      awemeId?: string;
+      /** 媒体地址来源，供诊断展示。 */
+      mediaSource?: 'response' | 'request' | 'player';
+    }
+  | { ok: false; error: string };
+
+/** popup → background → Native Messaging host 的本地转录请求。 */
+export interface DouyinTranscribeRequest {
+  type: 'NOMO_CLIPPER_TRANSCRIBE_DOUYIN';
+  /** https: 时由扩展通过浏览器代理下载；audioBase64 交给本机助手解码。 */
+  mediaUrl?: string;
+  audioBase64?: string;
+  audioMime?: string;
+  pageUrl: string;
+  title: string;
+}
+
+export interface TranscriptSegment {
+  start: number;
+  end: number;
+  text: string;
+}
+
+export type DouyinTranscribeResponse =
+  | {
+      ok: true;
+      model: string;
+      device: 'cuda' | 'cpu';
+      duration: number;
+      elapsed: number;
+      segments: TranscriptSegment[];
+    }
+  | { ok: false; error: string; setupRequired?: boolean };
+
+export type NativeTranscriberPingResponse =
+  | { ok: true; version: string; extensionId: string }
+  | { ok: false; error: string; extensionId: string };
 
 /** 诊断请求：导出页面结构供开发者分析 */
 export interface DiagnoseRequest {

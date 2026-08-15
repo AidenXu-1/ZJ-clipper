@@ -254,31 +254,42 @@ export async function collectAllImages(
     urls.push(url);
   }
   const unique = urls.slice(0, 40);
-  const out: GatedImage2[] = [];
+  const out: Array<GatedImage2 | undefined> = new Array(unique.length);
   let lastError = '';
-  for (let i = 0; i < unique.length; i++) {
-    const url = unique[i];
-    onProgress?.(i + 1, unique.length);
-    if (url.startsWith('blob:')) {
-      const inl = inlineMap.get(url);
-      if (!inl) {
-        lastError = 'blob 图未解析';
-        continue;
+  let cursor = 0;
+  let completed = 0;
+  async function worker(): Promise<void> {
+    while (true) {
+      const i = cursor++;
+      if (i >= unique.length) return;
+      const url = unique[i];
+      try {
+        if (url.startsWith('blob:')) {
+          const inl = inlineMap.get(url);
+          if (!inl) {
+            lastError = 'blob 图未解析';
+            continue;
+          }
+          out[i] = { url, base64: inl.base64, mime: inl.mime };
+        } else {
+          const resp = (await chrome.runtime.sendMessage({
+            type: 'ZHAOJI_CLIPPER_FETCH_IMAGE',
+            url,
+          })) as FetchImageResponse;
+          if (!resp?.ok) {
+            lastError = resp?.error || '下载失败';
+            continue;
+          }
+          out[i] = { url, base64: resp.base64, mime: resp.mime };
+        }
+      } finally {
+        completed++;
+        onProgress?.(completed, unique.length);
       }
-      out.push({ url, base64: inl.base64, mime: inl.mime });
-    } else {
-      const resp = (await chrome.runtime.sendMessage({
-        type: 'ZHAOJI_CLIPPER_FETCH_IMAGE',
-        url,
-      })) as FetchImageResponse;
-      if (!resp?.ok) {
-        lastError = resp?.error || '下载失败';
-        continue;
-      }
-      out.push({ url, base64: resp.base64, mime: resp.mime });
     }
   }
-  return { images: out, lastError };
+  await Promise.all(Array.from({ length: Math.min(3, unique.length) }, () => worker()));
+  return { images: out.filter((item): item is GatedImage2 => !!item), lastError };
 }
 
 /** 飞书图片字节（按 url 关联） */

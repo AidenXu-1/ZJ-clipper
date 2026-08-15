@@ -1,8 +1,8 @@
 {
-  "name": "zhaoji-clipper",
-  "displayName": "兆基clipper",
-  "description": "兆基clipper —— 把网页内容简存到你的 Obsidian 仓库",
-  "version": "4.0.2",
+  "name": "nomo-clipper",
+  "displayName": "Nomo Clipper",
+  "description": "Nomo Clipper —— 把网页内容简存到你的 Obsidian 仓库",
+  "version": "2.0.3",
   "type": "module",
   "scripts": {
     "dev": "wxt",
@@ -14,6 +14,7 @@
     "zip": "wxt zip",
     "zip:edge": "wxt zip -b edge",
     "compile": "tsc --noEmit",
+    "test:douyin-media": "node --experimental-strip-types scripts/test-douyin-media.mjs",
     "postinstall": "wxt prepare"
   },
   "dependencies": {

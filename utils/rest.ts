@@ -56,17 +56,49 @@ export async function saveViaRest(
   }
 }
 
-/** 查询仓库内是否已存在该笔记（200 存在 / 404 不存在）。失败一律按"不存在"，不阻断保存 */
-export async function fileExists(cfg: RestConfig, filePath: string): Promise<boolean> {
+/**
+ * 查询仓库内是否已存在该笔记。
+ * 只有明确 404 才是“不存在”；网络、鉴权和服务异常必须阻断保存，
+ * 避免把检查失败误判成可安全创建并覆盖已有笔记。
+ */
+export async function checkFileState(
+  cfg: RestConfig,
+  filePath: string,
+): Promise<'exists' | 'missing'> {
+  let res: Response;
   try {
-    const res = await fetch(vaultUrl(cfg.baseUrl, filePath), {
+    res = await fetch(vaultUrl(cfg.baseUrl, filePath), {
       method: 'GET',
       headers: { Authorization: authHeader(cfg.apiKey) },
     });
-    return res.ok;
   } catch {
-    return false;
+    throw new Error('无法确认目标笔记是否存在：请检查 Obsidian Local REST API 连接');
   }
+  if (res.status === 404) return 'missing';
+  if (res.status === 401 || res.status === 403) {
+    throw new Error('无法确认目标笔记：API Key 鉴权失败');
+  }
+  if (!res.ok) {
+    throw new Error(`无法确认目标笔记：HTTP ${res.status} ${res.statusText}`);
+  }
+  return 'exists';
+}
+
+/** 为“另存副本”寻找首个明确不存在的路径；任何检查异常都会中止。 */
+export async function findAvailableCopyPath(
+  cfg: RestConfig,
+  filePath: string,
+): Promise<string> {
+  const slash = filePath.lastIndexOf('/');
+  const folder = slash >= 0 ? filePath.slice(0, slash + 1) : '';
+  const rawName = slash >= 0 ? filePath.slice(slash + 1) : filePath;
+  const name = rawName.replace(/ \(副本(?: \d+)?\)$/, '');
+  for (let i = 1; i <= 99; i++) {
+    const suffix = i === 1 ? ' (副本)' : ` (副本 ${i})`;
+    const candidate = `${folder}${name}${suffix}`;
+    if ((await checkFileState(cfg, candidate)) === 'missing') return candidate;
+  }
+  throw new Error('同名副本过多，请修改文件名后再保存');
 }
 
 /** 写入二进制文件（图片附件）到仓库 filePath（含扩展名） */

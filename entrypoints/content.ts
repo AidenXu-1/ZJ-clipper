@@ -2,7 +2,12 @@
 //  · 注册消息监听（剪藏/高亮/诊断）
 //  · 抓取交给站点适配器注册表（utils/extractors）：对应平台用对应的活，互不串扰
 //  · 高亮器 UI（划词浮动按钮 + Option 点击移除）与诊断保留在此
-import { ExtractedPage, ExtractResponse } from '@/utils/types';
+import {
+  BilibiliTimestampResponse,
+  DouyinMediaResponse,
+  ExtractedPage,
+  ExtractResponse,
+} from '@/utils/types';
 import {
   Highlight,
   ensureHighlightStyle,
@@ -23,6 +28,48 @@ import {
 import { dispatchExtract, resolveAdapter } from '@/utils/extractors';
 import { diagnoseBili } from '@/utils/extractors/bilibili';
 import { loadSettings } from '@/utils/storage';
+import { buildBilibiliTimestampUrl, formatTimestamp } from '@/utils/timestamp';
+import { extractDouyinAwemeId } from '@/utils/douyin-media-payload';
+
+const NOMO_MEDIA_URL_EVENT = 'nomo-clipper:douyin-media-url';
+const NOMO_MEDIA_SNAPSHOT_EVENT = 'nomo-clipper:douyin-media-snapshot';
+interface ObservedDouyinMedia {
+  url: string;
+  pageUrl: string;
+  capturedAt: number;
+  awemeId?: string;
+  priority: number;
+  source: 'response' | 'request';
+}
+const recentDouyinMedia: ObservedDouyinMedia[] = [];
+
+window.addEventListener(NOMO_MEDIA_URL_EVENT, (event) => {
+  const value = (event as CustomEvent<unknown>).detail;
+  if (!value || typeof value !== 'object') return;
+  const { url, pageUrl, capturedAt, awemeId, priority, source } =
+    value as Partial<ObservedDouyinMedia>;
+  if (
+    typeof url !== 'string' ||
+    !/^https:\/\//i.test(url) ||
+    url.length > 16_384 ||
+    typeof pageUrl !== 'string' ||
+    typeof capturedAt !== 'number' ||
+    (awemeId != null && !/^\d{8,}$/.test(awemeId))
+  ) return;
+  const duplicate = recentDouyinMedia.findIndex(
+    (item) => item.url === url && item.awemeId === awemeId,
+  );
+  if (duplicate >= 0) recentDouyinMedia.splice(duplicate, 1);
+  recentDouyinMedia.push({
+    url,
+    pageUrl,
+    capturedAt,
+    awemeId,
+    priority: typeof priority === 'number' ? priority : 0,
+    source: source === 'response' ? 'response' : 'request',
+  });
+  if (recentDouyinMedia.length > 96) recentDouyinMedia.splice(0, recentDouyinMedia.length - 96);
+});
 
 // 本页高亮内存副本（与 storage 同步）
 let pageHighlights: Highlight[] = [];
@@ -71,8 +118,8 @@ function setupSelectionButton() {
     'font-size:13px !important',
     'font-family:-apple-system,sans-serif !important',
     'line-height:1.2 !important',
-    'background:#ED7D1C !important',
-    'color:#fff !important',
+    'background:#29C16A !important',
+    'color:#0B2415 !important',
     'border:none !important',
     'border-radius:6px !important',
     'cursor:pointer !important',
@@ -148,6 +195,118 @@ function onHighlightClick(e: MouseEvent) {
   saveHighlights(pageHighlights);
 }
 
+/** 读取 B站播放器此刻的真实进度；每次点击时现取，避免使用打开弹窗时的旧时间。 */
+function currentBilibiliTimestamp(): BilibiliTimestampResponse {
+  const videos = Array.from(document.querySelectorAll('video'));
+  const video = videos.find((v) => !v.paused && !v.ended) || videos[0];
+  if (!(video instanceof HTMLVideoElement) || !Number.isFinite(video.currentTime)) {
+    return { ok: false, error: '未找到可读取进度的 B站播放器' };
+  }
+  const seconds = Math.max(0, Math.floor(video.currentTime));
+  const url = buildBilibiliTimestampUrl(location.href, seconds);
+  if (!url) return { ok: false, error: '当前不是 B站视频页面' };
+  return { ok: true, seconds, label: formatTimestamp(seconds), url };
+}
+
+function awemeIdNearVideo(video: HTMLVideoElement): string | undefined {
+  const pageId = extractDouyinAwemeId(location.href);
+  if (pageId) return pageId;
+
+  let node: Element | null = video;
+  for (let depth = 0; node && depth < 12; depth += 1, node = node.parentElement) {
+    const ownHref = node instanceof HTMLAnchorElement ? node.href : '';
+    const nestedHref = node.querySelector<HTMLAnchorElement>(
+      'a[href*="/video/"],a[href*="/note/"],a[href*="modal_id="]',
+    )?.href;
+    const id = extractDouyinAwemeId(ownHref || nestedHref || '');
+    if (id) return id;
+  }
+
+  const videoRect = video.getBoundingClientRect();
+  const centerX = videoRect.left + videoRect.width / 2;
+  const centerY = videoRect.top + videoRect.height / 2;
+  const nearby = Array.from(
+    document.querySelectorAll<HTMLAnchorElement>(
+      'a[href*="/video/"],a[href*="/note/"],a[href*="modal_id="]',
+    ),
+  )
+    .map((anchor) => {
+      const rect = anchor.getBoundingClientRect();
+      const dx = rect.left + rect.width / 2 - centerX;
+      const dy = rect.top + rect.height / 2 - centerY;
+      return { href: anchor.href, distance: dx * dx + dy * dy };
+    })
+    .sort((a, b) => a.distance - b.distance)[0];
+  return nearby ? extractDouyinAwemeId(nearby.href) : undefined;
+}
+
+/** 读取当前抖音播放器的真实媒体地址；只在用户点击转录时读取。 */
+function currentDouyinMedia(): DouyinMediaResponse {
+  if (!/(^|\.)douyin\.com$/i.test(location.hostname)) {
+    return { ok: false, error: '当前不是抖音视频页面' };
+  }
+  // 主世界探针会同步重放 document_idle 之前捕获到的媒体请求。
+  window.dispatchEvent(new Event(NOMO_MEDIA_SNAPSHOT_EVENT));
+  const videos = Array.from(document.querySelectorAll('video'));
+  const visible = videos
+    .map((video) => {
+      const rect = video.getBoundingClientRect();
+      const area = Math.max(0, rect.width) * Math.max(0, rect.height);
+      const inViewport =
+        rect.bottom > 0 &&
+        rect.right > 0 &&
+        rect.top < window.innerHeight &&
+        rect.left < window.innerWidth;
+      const playing = !video.paused && !video.ended ? 1 : 0;
+      return { video, score: playing * 1_000_000_000 + (inViewport ? area : 0) };
+    })
+    .sort((a, b) => b.score - a.score)[0]?.video;
+  if (!(visible instanceof HTMLVideoElement)) {
+    return { ok: false, error: '未找到抖音播放器，请先播放视频后重试' };
+  }
+  const source = visible.querySelector('source[src]')?.getAttribute('src') || '';
+  const playerUrl = visible.currentSrc || visible.getAttribute('src') || source;
+  // 抖音新版播放器常用 MediaSource blob:；优先使用响应体里与当前作品 ID 对应的地址。
+  const awemeId = awemeIdNearVideo(visible);
+  const freshAfter = Date.now() - 30 * 60_000;
+  const candidates = recentDouyinMedia.filter(
+    (item) => item.capturedAt >= freshAfter && item.pageUrl === location.href,
+  );
+  const exactCandidates = awemeId
+    ? candidates.filter((item) => item.awemeId === awemeId)
+    : [];
+  const currentPageMedia = (exactCandidates.length ? exactCandidates : candidates).sort(
+    (a, b) =>
+      // 没有精确作品 ID 时，页面真正请求的独立音轨比 feed 中预加载作品更可信。
+      (exactCandidates.length ? 0 : Number(b.source === 'request') - Number(a.source === 'request')) ||
+      b.priority - a.priority ||
+      b.capturedAt - a.capturedAt,
+  )[0];
+  const mediaUrl = /^https:\/\//i.test(playerUrl)
+    ? playerUrl
+    : currentPageMedia?.url || playerUrl;
+  if (!/^(?:https:|blob:)/i.test(mediaUrl)) {
+    return {
+      ok: false,
+      error: '抖音播放器暂未暴露可读取的媒体，请先播放几秒后重试',
+    };
+  }
+  const title =
+    document.querySelector('meta[property="og:title"]')?.getAttribute('content') ||
+    document.querySelector('h1')?.textContent ||
+    document.title.replace(/\s*[-_]\s*\u6296\u97f3.*$/i, '') ||
+    '抖音视频';
+  return {
+    ok: true,
+    mediaUrl,
+    pageUrl: location.href,
+    title: title.trim(),
+    duration: Number.isFinite(visible.duration) ? Math.max(0, visible.duration) : 0,
+    awemeId,
+    mediaSource: currentPageMedia?.source || (/^https:\/\//i.test(playerUrl) ? 'player' : undefined),
+  };
+}
+
 export default defineContentScript({
   matches: ['<all_urls>'],
   runAt: 'document_idle',
@@ -175,6 +334,14 @@ export default defineContentScript({
       if (msg?.type === 'ZHAOJI_CLIPPER_SET_HIGHLIGHT_FLOATING') {
         setSelectionButtonEnabled(msg.enabled !== false);
         sendResponse({ ok: true });
+        return false;
+      }
+      if (msg?.type === 'ZHAOJI_CLIPPER_BILI_TIMESTAMP') {
+        sendResponse(currentBilibiliTimestamp());
+        return false;
+      }
+      if (msg?.type === 'NOMO_CLIPPER_DOUYIN_MEDIA') {
+        sendResponse(currentDouyinMedia());
         return false;
       }
       if (msg?.type === 'ZHAOJI_CLIPPER_DIAGNOSE') {
@@ -1017,7 +1184,7 @@ function diagnoseFeishuCodeBlocks(): string {
 
 async function diagnoseFull(): Promise<string> {
   const lines: string[] = [];
-  lines.push('=== 兆基clipper抓取诊断 ===');
+  lines.push('=== Nomo Clipper 抓取诊断 ===');
   lines.push(`URL: ${location.href}`);
   const ctx: ExtractContext = {
     url: location.href,

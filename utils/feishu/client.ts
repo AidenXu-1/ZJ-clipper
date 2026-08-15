@@ -27,6 +27,30 @@ interface CachedToken {
 }
 
 const tokenCache = new Map<string, CachedToken>();
+const JSON_TIMEOUT_MS = 20_000;
+const UPLOAD_TIMEOUT_MS = 60_000;
+
+async function fetchJsonWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number,
+  label: string,
+): Promise<{ res: Response; data: any }> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { ...init, signal: controller.signal });
+    const data = await res.json().catch(() => ({}));
+    return { res, data };
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new Error(`${label}超时（${Math.round(timeoutMs / 1000)} 秒）`);
+    }
+    throw new Error(`无法连接飞书开放平台，请检查网络（${label}）`);
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 export function apiBase(domain: FeishuDomain): string {
   return domain === 'larksuite.com' ? 'https://open.larksuite.com' : 'https://open.feishu.cn';
@@ -52,9 +76,9 @@ function errorHint(code: unknown): string {
 
 async function refreshUserToken(cfg: FeishuConfig): Promise<string> {
   if (!cfg.userRefreshToken) throw new Error('飞书用户授权已过期，请在设置页重新点击「飞书登录授权」');
-  let res: Response;
-  try {
-    res = await fetch(`${apiBase(cfg.domain)}/open-apis/authen/v2/oauth/token`, {
+  const { res, data } = await fetchJsonWithTimeout(
+    `${apiBase(cfg.domain)}/open-apis/authen/v2/oauth/token`,
+    {
       method: 'POST',
       headers: { 'Content-Type': 'application/json; charset=utf-8' },
       body: JSON.stringify({
@@ -63,11 +87,10 @@ async function refreshUserToken(cfg: FeishuConfig): Promise<string> {
         client_secret: cfg.appSecret.trim(),
         refresh_token: cfg.userRefreshToken,
       }),
-    });
-  } catch {
-    throw new Error('无法连接飞书开放平台，请检查网络');
-  }
-  const data = await res.json().catch(() => ({}));
+    },
+    JSON_TIMEOUT_MS,
+    '刷新飞书授权',
+  );
   if (data?.code != null && data?.code !== 0) {
     throw new Error(`飞书授权刷新失败 ${data?.code}：${data?.msg || `HTTP ${res.status}`}，请重新登录授权`);
   }
@@ -100,18 +123,16 @@ export async function getTenantToken(cfg: FeishuConfig): Promise<string> {
   const cached = tokenCache.get(key);
   if (cached && cached.expireAt - 60_000 > Date.now()) return cached.token;
 
-  let res: Response;
-  try {
-    res = await fetch(`${apiBase(cfg.domain)}/open-apis/auth/v3/tenant_access_token/internal`, {
+  const { res, data } = await fetchJsonWithTimeout(
+    `${apiBase(cfg.domain)}/open-apis/auth/v3/tenant_access_token/internal`,
+    {
       method: 'POST',
       headers: { 'Content-Type': 'application/json; charset=utf-8' },
       body: JSON.stringify({ app_id: cfg.appId.trim(), app_secret: cfg.appSecret.trim() }),
-    });
-  } catch {
-    throw new Error('无法连接飞书开放平台，请检查网络');
-  }
-
-  const data = await res.json().catch(() => ({}));
+    },
+    JSON_TIMEOUT_MS,
+    '飞书鉴权',
+  );
   if (data?.code !== 0 || !data?.tenant_access_token) {
     throw new Error(`飞书鉴权失败：${data?.msg || `HTTP ${res.status}`}（请检查 App ID / App Secret）`);
   }
@@ -135,21 +156,19 @@ export async function feishuJson(
     if (qs) url += `?${qs}`;
   }
 
-  let res: Response;
-  try {
-    res = await fetch(url, {
+  const { res, data } = await fetchJsonWithTimeout(
+    url,
+    {
       method: init.method || 'GET',
       headers: {
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json; charset=utf-8',
       },
       body: init.body == null ? undefined : JSON.stringify(init.body),
-    });
-  } catch {
-    throw new Error('无法连接飞书开放平台，请检查网络');
-  }
-
-  const data = await res.json().catch(() => ({}));
+    },
+    JSON_TIMEOUT_MS,
+    '飞书接口请求',
+  );
   if (data?.code !== 0) {
     throw new Error(`飞书接口错误 ${data?.code}：${data?.msg || `HTTP ${res.status}`}${errorHint(data?.code)}`);
   }
@@ -162,18 +181,16 @@ export async function feishuUpload(
   form: FormData,
 ): Promise<any> {
   const token = await authToken(cfg);
-  let res: Response;
-  try {
-    res = await fetch(`${apiBase(cfg.domain)}${path}`, {
+  const { res, data } = await fetchJsonWithTimeout(
+    `${apiBase(cfg.domain)}${path}`,
+    {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` },
       body: form,
-    });
-  } catch {
-    throw new Error('无法连接飞书开放平台，请检查网络');
-  }
-
-  const data = await res.json().catch(() => ({}));
+    },
+    UPLOAD_TIMEOUT_MS,
+    '飞书文件上传',
+  );
   if (data?.code !== 0) {
     throw new Error(`飞书上传失败 ${data?.code}：${data?.msg || `HTTP ${res.status}`}${errorHint(data?.code)}`);
   }

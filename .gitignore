@@ -1,5 +1,10 @@
 # 依赖
 node_modules/
+local-transcriber/.venv/
+local-transcriber/.uv-cache/
+local-transcriber/__pycache__/
+local-transcriber/NomoNativeHost.exe
+local-transcriber/tools/
 
 # WXT 构建产物与缓存
 .output/

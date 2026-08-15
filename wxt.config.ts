@@ -10,10 +10,10 @@ export default defineConfig({
     esbuild: { charset: 'ascii' },
   }),
   manifest: {
-    name: '兆基clipper',
+    name: 'Nomo Clipper',
     description: '把网页内容简存到你的 Obsidian 仓库',
     default_locale: undefined,
-    permissions: ['activeTab', 'scripting', 'storage', 'contextMenus', 'identity'],
+    permissions: ['activeTab', 'scripting', 'storage', 'contextMenus', 'identity', 'nativeMessaging'],
     // 本机 Obsidian Local REST API + 跨域下载图片（本地图片保存功能）
     host_permissions: [
       'http://127.0.0.1/*',
@@ -23,7 +23,7 @@ export default defineConfig({
       '<all_urls>',
     ],
     action: {
-      default_title: '兆基clipper：剪藏此页',
+      default_title: 'Nomo Clipper：剪藏此页',
     },
     commands: {
       _execute_action: {
@@ -31,7 +31,7 @@ export default defineConfig({
           default: 'Ctrl+Shift+S',
           mac: 'Command+Shift+S',
         },
-        description: '打开兆基clipper剪藏当前页面',
+        description: '打开 Nomo Clipper 剪藏当前页面',
       },
       'highlight-selection': {
         // 注意：mac 的 Cmd+Shift+H 被系统占用，改用不冲突的组合；
