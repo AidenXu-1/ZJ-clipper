@@ -121,13 +121,6 @@ Copy-NomoFile $uv (Join-Path $ToolsDir 'uv.exe')
 Copy-NomoFile $ffmpeg (Join-Path $ToolsDir 'ffmpeg.exe')
 
 $ids = New-Object 'Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
-$idFile = Join-Path $SourceDir 'allowed-extension-ids.txt'
-if (Test-Path -LiteralPath $idFile -PathType Leaf) {
-    foreach ($line in (Get-Content -LiteralPath $idFile -Encoding ASCII)) {
-        $value = $line.Trim().ToLowerInvariant()
-        if ($value -match '^[a-p]{32}$') { [void]$ids.Add($value) }
-    }
-}
 foreach ($value in $ExtensionId) {
     $normalized = $value.Trim().ToLowerInvariant()
     if ($normalized -notmatch '^[a-p]{32}$') { throw "Invalid Chrome extension ID: $value" }
