@@ -37,7 +37,7 @@ turndown.remove((node) =>
 );
 
 // 网页内联高亮（飞书 mark/背景色文字等会先规整为 mark）→ Obsidian 高亮语法
-turndown.addRule('zhaojiClipperMark', {
+turndown.addRule('nomoClipperMark', {
   filter: (node) => node.nodeName === 'MARK',
   replacement: (content) => {
     const text = content.trim();
@@ -46,7 +46,7 @@ turndown.addRule('zhaojiClipperMark', {
 });
 
 // 飞书 callout 规整后的专用标记，直接输出 Obsidian callout，避免 [!note] 被转义。
-turndown.addRule('zhaojiClipperCallout', {
+turndown.addRule('nomoClipperCallout', {
   filter: (node) =>
     node.nodeName === 'BLOCKQUOTE' &&
     (node as HTMLElement).getAttribute('data-obsidian-callout') === 'note',
@@ -68,7 +68,7 @@ turndown.addRule('zhaojiClipperCallout', {
 });
 
 // 站内锚点链接（#xxx，如飞书目录/标题）→ 纯文本；空链接 → 丢弃
-turndown.addRule('zhaojiClipperAnchors', {
+turndown.addRule('nomoClipperAnchors', {
   filter: (node) => node.nodeName === 'A',
   replacement: (content, node) => {
     const href = (node as HTMLElement).getAttribute('href') || '';
@@ -106,7 +106,7 @@ function pickFromSrcset(srcset: string | null): string {
 }
 
 // 图片：优先取真实地址(data-src/srcset)→绝对化；丢弃表情贴纸/占位/加载/小图标
-turndown.addRule('zhaojiClipperImages', {
+turndown.addRule('nomoClipperImages', {
   filter: (node) => node.nodeName === 'IMG',
   replacement: (_content, node) => {
     const el = node as HTMLElement;
@@ -160,7 +160,7 @@ function obsidianVideoEmbed(url: string): string | null {
 }
 
 // iframe 嵌入（视频/网页）→ YouTube 转可播放嵌入，其余转可点击链接
-turndown.addRule('zhaojiClipperIframe', {
+turndown.addRule('nomoClipperIframe', {
   filter: (node) => node.nodeName === 'IFRAME',
   replacement: (_content, node) => {
     const el = node as HTMLElement;
@@ -175,7 +175,7 @@ turndown.addRule('zhaojiClipperIframe', {
 });
 
 // video 标签 → 视频链接
-turndown.addRule('zhaojiClipperVideo', {
+turndown.addRule('nomoClipperVideo', {
   filter: (node) => node.nodeName === 'VIDEO',
   replacement: (_content, node) => {
     const el = node as HTMLElement;
@@ -188,13 +188,13 @@ turndown.addRule('zhaojiClipperVideo', {
 
 // 飞书表格先在站点适配器里规整为干净 HTML。这里保留 HTML 表格，
 // 避免 GFM Markdown 表格丢失宽度信息，导致 Obsidian 里被挤成窄列。
-turndown.addRule('zhaojiClipperWideTable', {
+turndown.addRule('nomoClipperWideTable', {
   filter: (node) =>
     node.nodeName === 'TABLE' &&
-    (node as HTMLElement).getAttribute('data-zhaoji-wide-table') === 'true',
+    (node as HTMLElement).getAttribute('data-nomo-wide-table') === 'true',
   replacement: (_content, node) => {
     const table = node as HTMLElement;
-    table.removeAttribute('data-zhaoji-wide-table');
+    table.removeAttribute('data-nomo-wide-table');
     return `\n\n${table.outerHTML}\n\n`;
   },
 });

@@ -1,11 +1,10 @@
 // Nomo Clipper —— 普通设置使用 sync；API Key 与仓库档（含密钥）单独留在当前设备的 local
 import { ClipDraft, Settings, DEFAULT_SETTINGS, SaveDestination, VaultProfile } from './types';
 
-const KEY = 'zhaoji_clipper_settings';
-const LEGACY_KEY = 'jicun_settings';
-const REST_API_KEY = 'zhaoji_clipper_rest_api_key';
-const PROFILES_KEY = 'zhaoji_clipper_vault_profiles'; // 仓库档（含密钥）只存本地，不同步
-const DRAFTS_KEY = 'zhaoji_clipper_clip_drafts';
+const KEY = 'nomo_clipper_settings';
+const REST_API_KEY = 'nomo_clipper_rest_api_key';
+const PROFILES_KEY = 'nomo_clipper_vault_profiles'; // 仓库档（含密钥）只存本地，不同步
+const DRAFTS_KEY = 'nomo_clipper_clip_drafts';
 const DRAFT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const DRAFT_LIMIT = 10;
 
@@ -26,10 +25,10 @@ export function activeProfile(s: Settings): VaultProfile | undefined {
 
 export async function loadSettings(): Promise<Settings> {
   const [syncRaw, localRaw] = await Promise.all([
-    chrome.storage.sync.get([KEY, LEGACY_KEY]),
+    chrome.storage.sync.get(KEY),
     chrome.storage.local.get([REST_API_KEY, PROFILES_KEY]),
   ]);
-  const stored = (syncRaw?.[KEY] ?? syncRaw?.[LEGACY_KEY] ?? {}) as Partial<Settings>;
+  const stored = (syncRaw?.[KEY] ?? {}) as Partial<Settings>;
   const { restApiKey: syncedApiKey = '', vaultProfiles: _drop, ...safeStored } = stored;
   const localApiKey = typeof localRaw?.[REST_API_KEY] === 'string'
     ? localRaw[REST_API_KEY]
@@ -42,9 +41,8 @@ export async function loadSettings(): Promise<Settings> {
   if (!localApiKey && syncedApiKey) {
     await chrome.storage.local.set({ [REST_API_KEY]: syncedApiKey });
   }
-  if (!syncRaw?.[KEY] || syncedApiKey || syncRaw?.[LEGACY_KEY]) {
+  if (!syncRaw?.[KEY] || syncedApiKey) {
     await chrome.storage.sync.set({ [KEY]: safeStored });
-    await chrome.storage.sync.remove(LEGACY_KEY);
   }
 
   // 旧版「未读标签」占位默认是英文 'unread'；升级为「学习状态」字段后统一显示为「未学习」
@@ -165,16 +163,11 @@ export async function saveSettings(settings: Settings): Promise<void> {
 }
 
 // ===== 标签历史（本地，用于"常用标签"复用补全；非全仓库扫描）=====
-const TAG_KEY = 'zhaoji_clipper_tag_history';
-const LEGACY_TAG_KEY = 'jicun_tag_history';
+const TAG_KEY = 'nomo_clipper_tag_history';
 
 export async function loadTagHistory(): Promise<string[]> {
-  const raw = await chrome.storage.local.get([TAG_KEY, LEGACY_TAG_KEY]);
-  const tags = (raw?.[TAG_KEY] ?? raw?.[LEGACY_TAG_KEY] ?? []) as string[];
-  if (!raw?.[TAG_KEY] && raw?.[LEGACY_TAG_KEY]) {
-    await chrome.storage.local.set({ [TAG_KEY]: tags });
-  }
-  return tags;
+  const raw = await chrome.storage.local.get(TAG_KEY);
+  return (raw?.[TAG_KEY] ?? []) as string[];
 }
 
 /** 把本次用到的标签并入历史：最近用的排前、去重（忽略大小写）、上限 40 */

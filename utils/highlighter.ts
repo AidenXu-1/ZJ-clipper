@@ -14,20 +14,15 @@ const HL_CLASS = 'nomo-clipper-hl';
 
 // ---------- 存储（按页面 URL，忽略 hash）----------
 
-function pageKey(prefix = 'zhaoji_clipper_hl'): string {
+function pageKey(prefix = 'nomo_clipper_hl'): string {
   const u = new URL(location.href);
   return `${prefix}:${u.origin}${u.pathname}${u.search}`;
 }
 
 export async function loadHighlights(): Promise<Highlight[]> {
   const k = pageKey();
-  const legacy = pageKey('jicun_hl');
-  const r = await chrome.storage.local.get([k, legacy]);
-  const list = ((r[k] ?? r[legacy]) as Highlight[]) || [];
-  if (!r[k] && r[legacy]) {
-    await chrome.storage.local.set({ [k]: list });
-  }
-  return list;
+  const r = await chrome.storage.local.get(k);
+  return (r[k] as Highlight[]) || [];
 }
 
 export async function saveHighlights(list: Highlight[]): Promise<void> {

@@ -312,31 +312,31 @@ export default defineContentScript({
   runAt: 'document_idle',
   main() {
     // 防重复初始化：按需注入（chrome.scripting）时本脚本会再次执行
-    if ((window as unknown as { __ZHAOJI_CLIPPER__?: boolean }).__ZHAOJI_CLIPPER__) return;
-    (window as unknown as { __ZHAOJI_CLIPPER__?: boolean }).__ZHAOJI_CLIPPER__ = true;
+    if ((window as unknown as { __NOMO_CLIPPER__?: boolean }).__NOMO_CLIPPER__) return;
+    (window as unknown as { __NOMO_CLIPPER__?: boolean }).__NOMO_CLIPPER__ = true;
 
     // 消息监听器最先、同步注册，确保即使后续初始化出错也能响应剪藏请求
     chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-      if (msg?.type === 'ZHAOJI_CLIPPER_HIGHLIGHT') {
+      if (msg?.type === 'NOMO_CLIPPER_HIGHLIGHT') {
         doHighlightSelection().then((count) => sendResponse({ ok: true, count }));
         return true;
       }
-      if (msg?.type === 'ZHAOJI_CLIPPER_GET_HIGHLIGHTS') {
+      if (msg?.type === 'NOMO_CLIPPER_GET_HIGHLIGHTS') {
         sendResponse({ ok: true, highlights: pageHighlights.map((h) => h.text) });
         return false;
       }
-      if (msg?.type === 'ZHAOJI_CLIPPER_CLEAR_HIGHLIGHTS') {
+      if (msg?.type === 'NOMO_CLIPPER_CLEAR_HIGHLIGHTS') {
         for (const h of pageHighlights) unwrapHighlight(h.id);
         pageHighlights = [];
         saveHighlights(pageHighlights).then(() => sendResponse({ ok: true }));
         return true;
       }
-      if (msg?.type === 'ZHAOJI_CLIPPER_SET_HIGHLIGHT_FLOATING') {
+      if (msg?.type === 'NOMO_CLIPPER_SET_HIGHLIGHT_FLOATING') {
         setSelectionButtonEnabled(msg.enabled !== false);
         sendResponse({ ok: true });
         return false;
       }
-      if (msg?.type === 'ZHAOJI_CLIPPER_BILI_TIMESTAMP') {
+      if (msg?.type === 'NOMO_CLIPPER_BILI_TIMESTAMP') {
         sendResponse(currentBilibiliTimestamp());
         return false;
       }
@@ -344,7 +344,7 @@ export default defineContentScript({
         sendResponse(currentDouyinMedia());
         return false;
       }
-      if (msg?.type === 'ZHAOJI_CLIPPER_DIAGNOSE') {
+      if (msg?.type === 'NOMO_CLIPPER_DIAGNOSE') {
         diagnoseFull()
           .then((dump) => sendResponse({ ok: true, dump }))
           .catch((e) =>
@@ -352,7 +352,7 @@ export default defineContentScript({
           );
         return true;
       }
-      if (msg?.type !== 'ZHAOJI_CLIPPER_EXTRACT') return;
+      if (msg?.type !== 'NOMO_CLIPPER_EXTRACT') return;
       extract(!!msg.fullCapture)
         .then((data) => sendResponse({ ok: true, data } satisfies ExtractResponse))
         .catch((e) =>
@@ -369,8 +369,8 @@ export default defineContentScript({
       restoreHighlights();
       initHighlightPreferences().catch(() => setupSelectionButton());
       chrome.storage.onChanged.addListener((changes) => {
-        if (!changes.zhaoji_clipper_settings) return;
-        const next = changes.zhaoji_clipper_settings.newValue as
+        if (!changes.nomo_clipper_settings) return;
+        const next = changes.nomo_clipper_settings.newValue as
           | { highlightFloatingButton?: boolean }
           | undefined;
         setSelectionButtonEnabled(next?.highlightFloatingButton !== false);

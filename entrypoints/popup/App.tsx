@@ -84,7 +84,7 @@ async function extractActiveTab(fullCapture = false): Promise<ExtractResponse> {
     return { ok: false, error: T.restrictedPage };
   }
   try {
-    return await sendToTab<ExtractResponse>(tab.id, { type: 'ZHAOJI_CLIPPER_EXTRACT', fullCapture });
+    return await sendToTab<ExtractResponse>(tab.id, { type: 'NOMO_CLIPPER_EXTRACT', fullCapture });
   } catch {
     return { ok: false, error: '无法连接到页面，请刷新页面后重试' };
   }
@@ -412,7 +412,7 @@ export function App() {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       if (!tab?.id) throw new Error('未找到当前 B站标签页');
       const resp = await sendToTab<BilibiliTimestampResponse>(tab.id, {
-        type: 'ZHAOJI_CLIPPER_BILI_TIMESTAMP',
+        type: 'NOMO_CLIPPER_BILI_TIMESTAMP',
       });
       if (!resp?.ok) throw new Error(resp?.error || '无法读取当前播放时间');
       const line = `- [${resp.label}](${resp.url})`;
@@ -501,7 +501,7 @@ export function App() {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       if (!tab?.id) return;
       const resp = await sendToTab<{ ok: boolean; dump?: string }>(tab.id, {
-        type: 'ZHAOJI_CLIPPER_DIAGNOSE',
+        type: 'NOMO_CLIPPER_DIAGNOSE',
       });
       if (resp?.ok && resp.dump) {
         await navigator.clipboard.writeText(resp.dump);
@@ -530,7 +530,7 @@ export function App() {
   async function clearHighlights() {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (tab?.id) {
-      await sendToTab(tab.id, { type: 'ZHAOJI_CLIPPER_CLEAR_HIGHLIGHTS' }).catch(() => {});
+      await sendToTab(tab.id, { type: 'NOMO_CLIPPER_CLEAR_HIGHLIGHTS' }).catch(() => {});
     }
     setPage((p) => (p ? { ...p, highlights: [] } : p));
   }
@@ -543,7 +543,7 @@ export function App() {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (tab?.id) {
       await sendToTab(tab.id, {
-        type: 'ZHAOJI_CLIPPER_SET_HIGHLIGHT_FLOATING',
+        type: 'NOMO_CLIPPER_SET_HIGHLIGHT_FLOATING',
         enabled,
       }).catch(() => {});
     }
@@ -849,7 +849,7 @@ export function App() {
         }
         const uri = buildObsidianUri({ vault: obsVault, filePath: finalFilePath, content: note });
         const opened = (await chrome.runtime.sendMessage({
-          type: 'ZHAOJI_CLIPPER_SAVE',
+          type: 'NOMO_CLIPPER_SAVE',
           url: uri,
         })) as { ok?: boolean; error?: string } | undefined;
         if (!opened?.ok) throw new Error(opened?.error || '未能打开 Obsidian');
@@ -892,7 +892,7 @@ export function App() {
     if (/^https?:/.test(savedUri)) {
       await chrome.tabs.create({ url: savedUri });
     } else {
-      await chrome.runtime.sendMessage({ type: 'ZHAOJI_CLIPPER_SAVE', url: savedUri });
+      await chrome.runtime.sendMessage({ type: 'NOMO_CLIPPER_SAVE', url: savedUri });
     }
     window.close();
   }

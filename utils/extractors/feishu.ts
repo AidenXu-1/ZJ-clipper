@@ -314,7 +314,7 @@ function directChildListBlocks(el: Element): HTMLElement[] {
 function directOwnedMediaBlocks(el: Element): HTMLElement[] {
   const candidates = Array.from(
     el.querySelectorAll<HTMLElement>(
-      'figure, img, iframe, video, [data-zhaoji-board], [data-zhaoji-isv], [class*="image" i]',
+      'figure, img, iframe, video, [data-nomo-board], [data-nomo-isv], [class*="image" i]',
     ),
   ).filter((media) => {
     if (media.closest('table')) return false;
@@ -476,7 +476,7 @@ function buildSemanticFeishuTable(
 ): HTMLTableElement | null {
   if (!headerRows.length && !bodyRows.length) return null;
   const table = doc.createElement('table');
-  table.setAttribute('data-zhaoji-wide-table', 'true');
+  table.setAttribute('data-nomo-wide-table', 'true');
   table.setAttribute('width', '100%');
   table.setAttribute('cellspacing', '0');
   table.setAttribute(
@@ -779,7 +779,7 @@ async function cropVisibleElement(el: HTMLElement, scrollIntoView = true): Promi
   const restoreOverlays = hideFeishuScreenshotOverlays(el);
   const resp = (await chrome.runtime
     .sendMessage({
-      type: 'ZHAOJI_CLIPPER_CAPTURE_VISIBLE_TAB',
+      type: 'NOMO_CLIPPER_CAPTURE_VISIBLE_TAB',
     })
     .finally(restoreOverlays)) as CaptureVisibleTabResponse;
   if (!resp?.ok) return null;
@@ -847,7 +847,7 @@ async function captureFeishuVisualElement(
       if (visibleWidth < 40 || visibleHeight < 40) break;
 
       const resp = (await chrome.runtime.sendMessage({
-        type: 'ZHAOJI_CLIPPER_CAPTURE_VISIBLE_TAB',
+        type: 'NOMO_CLIPPER_CAPTURE_VISIBLE_TAB',
       })) as CaptureVisibleTabResponse;
       if (!resp?.ok) break;
 
@@ -1442,8 +1442,8 @@ function normalizeFeishuHtml(
   codes: FeishuCodeCapture[] = [],
 ): string {
   if (!html.trim()) return '';
-  const doc = new DOMParser().parseFromString(`<div id="zj-feishu-root">${html}</div>`, 'text/html');
-  const root = doc.querySelector('#zj-feishu-root');
+  const doc = new DOMParser().parseFromString(`<div id="nomo-feishu-root">${html}</div>`, 'text/html');
+  const root = doc.querySelector('#nomo-feishu-root');
   if (!root) return html;
 
   const fallbackBoards = Array.from(

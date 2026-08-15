@@ -242,7 +242,7 @@ export const DEFAULT_SETTINGS: Settings = {
 
 /** popup → content script 的消息 */
 export interface ExtractRequest {
-  type: 'ZHAOJI_CLIPPER_EXTRACT';
+  type: 'NOMO_CLIPPER_EXTRACT';
   /** 完整抓取模式：自动滚动加载全文（应对虚拟滚动页面） */
   fullCapture?: boolean;
 }
@@ -254,7 +254,7 @@ export type ExtractResponse =
 
 /** 后台跨域下载图片字节 */
 export interface FetchImageRequest {
-  type: 'ZHAOJI_CLIPPER_FETCH_IMAGE';
+  type: 'NOMO_CLIPPER_FETCH_IMAGE';
   url: string;
 }
 export type FetchImageResponse =
@@ -263,7 +263,7 @@ export type FetchImageResponse =
 
 /** 截取当前活动标签页的可见区域（飞书画板等非 Markdown 内容用） */
 export interface CaptureVisibleTabRequest {
-  type: 'ZHAOJI_CLIPPER_CAPTURE_VISIBLE_TAB';
+  type: 'NOMO_CLIPPER_CAPTURE_VISIBLE_TAB';
 }
 export type CaptureVisibleTabResponse =
   | { ok: true; dataUrl: string }
@@ -271,22 +271,22 @@ export type CaptureVisibleTabResponse =
 
 /** 高亮相关消息 */
 export interface HighlightSelectionRequest {
-  type: 'ZHAOJI_CLIPPER_HIGHLIGHT';
+  type: 'NOMO_CLIPPER_HIGHLIGHT';
 }
 export interface GetHighlightsRequest {
-  type: 'ZHAOJI_CLIPPER_GET_HIGHLIGHTS';
+  type: 'NOMO_CLIPPER_GET_HIGHLIGHTS';
 }
 export interface ClearHighlightsRequest {
-  type: 'ZHAOJI_CLIPPER_CLEAR_HIGHLIGHTS';
+  type: 'NOMO_CLIPPER_CLEAR_HIGHLIGHTS';
 }
 export interface SetHighlightFloatingButtonRequest {
-  type: 'ZHAOJI_CLIPPER_SET_HIGHLIGHT_FLOATING';
+  type: 'NOMO_CLIPPER_SET_HIGHLIGHT_FLOATING';
   enabled: boolean;
 }
 
 /** B站当前播放时间点 */
 export interface BilibiliTimestampRequest {
-  type: 'ZHAOJI_CLIPPER_BILI_TIMESTAMP';
+  type: 'NOMO_CLIPPER_BILI_TIMESTAMP';
 }
 
 export type BilibiliTimestampResponse =
@@ -347,7 +347,7 @@ export type NativeTranscriberPingResponse =
 
 /** 诊断请求：导出页面结构供开发者分析 */
 export interface DiagnoseRequest {
-  type: 'ZHAOJI_CLIPPER_DIAGNOSE';
+  type: 'NOMO_CLIPPER_DIAGNOSE';
 }
 
 export type DiagnoseResponse =
@@ -356,6 +356,6 @@ export type DiagnoseResponse =
 
 /** popup/background → background 的保存消息 */
 export interface SaveRequest {
-  type: 'ZHAOJI_CLIPPER_SAVE';
+  type: 'NOMO_CLIPPER_SAVE';
   url: string; // 已构造好的 obsidian:// URI
 }

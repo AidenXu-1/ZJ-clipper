@@ -131,7 +131,7 @@ export async function processNoteImages(
       mime = inl.mime;
     } else {
       const resp = (await chrome.runtime.sendMessage({
-        type: 'ZHAOJI_CLIPPER_FETCH_IMAGE',
+        type: 'NOMO_CLIPPER_FETCH_IMAGE',
         url,
       })) as FetchImageResponse;
       if (!resp?.ok) {
@@ -216,7 +216,7 @@ export async function collectGatedImages(
       mime = inl.mime;
     } else {
       const resp = (await chrome.runtime.sendMessage({
-        type: 'ZHAOJI_CLIPPER_FETCH_IMAGE',
+        type: 'NOMO_CLIPPER_FETCH_IMAGE',
         url,
       })) as FetchImageResponse;
       if (!resp?.ok) {
@@ -273,7 +273,7 @@ export async function collectAllImages(
           out[i] = { url, base64: inl.base64, mime: inl.mime };
         } else {
           const resp = (await chrome.runtime.sendMessage({
-            type: 'ZHAOJI_CLIPPER_FETCH_IMAGE',
+            type: 'NOMO_CLIPPER_FETCH_IMAGE',
             url,
           })) as FetchImageResponse;
           if (!resp?.ok) {

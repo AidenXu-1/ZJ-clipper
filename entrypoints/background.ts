@@ -16,7 +16,7 @@ const NATIVE_HOST = 'com.nomo.clipper.transcriber';
 async function highlightActiveTab() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (tab?.id) {
-    await sendToTab(tab.id, { type: 'ZHAOJI_CLIPPER_HIGHLIGHT' }).catch(() => {});
+    await sendToTab(tab.id, { type: 'NOMO_CLIPPER_HIGHLIGHT' }).catch(() => {});
   }
 }
 
@@ -57,19 +57,19 @@ export default defineBackground(() => {
 
   // 消息：保存 obsidian:// URI / 跨域下载图片 / 本地抖音转录
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-    if (msg?.type === 'ZHAOJI_CLIPPER_SAVE') {
+    if (msg?.type === 'NOMO_CLIPPER_SAVE') {
       openObsidian((msg as SaveRequest).url)
         .then(() => sendResponse({ ok: true }))
         .catch((e) => sendResponse({ ok: false, error: String(e) }));
       return true;
     }
-    if (msg?.type === 'ZHAOJI_CLIPPER_FETCH_IMAGE') {
+    if (msg?.type === 'NOMO_CLIPPER_FETCH_IMAGE') {
       fetchImage(msg.url)
         .then((r) => sendResponse(r))
         .catch((e) => sendResponse({ ok: false, error: String(e) }));
       return true;
     }
-    if (msg?.type === 'ZHAOJI_CLIPPER_CAPTURE_VISIBLE_TAB') {
+    if (msg?.type === 'NOMO_CLIPPER_CAPTURE_VISIBLE_TAB') {
       captureVisibleTab(_sender.tab?.windowId)
         .then((r) => sendResponse(r))
         .catch((e) => sendResponse({ ok: false, error: String(e) }));
