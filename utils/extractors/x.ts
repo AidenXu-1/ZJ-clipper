@@ -1,4 +1,4 @@
-// 兆基clipper —— X/Twitter 提取器（单条推文 + 整串 thread + Article 长文）
+// Nomo Clipper —— X/Twitter 提取器（单条推文 + 整串 thread + Article 长文）
 //  普通推文直读 tweet data-testid；Article 使用独立富文本容器与 Defuddle 专用提取器。
 //  反爬不构成障碍（读已渲染 DOM，不打签名 API）。视频是 blob 流，无法下载，用官方公开嵌入。
 //  整串：仅在用户点「完整抓取」(ctx.fullCapture) 时触发，滚动收集「围绕焦点、连续同作者」的块。

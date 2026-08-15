@@ -1,4 +1,4 @@
-// 兆基clipper —— B站专用提取器（Defuddle 无 B站 extractor，自建：嵌入播放器 + 元数据 + 简介 + 字幕）
+// Nomo Clipper —— B站专用提取器（Defuddle 无 B站 extractor，自建：嵌入播放器 + 元数据 + 简介 + 字幕）
 // 注：本模块会被打进 content.js，受 ASCII 约束 —— 正则字面量里禁止出现中文/零宽字符。
 import { ClipStats, ExtractedPage } from '@/utils/types';
 import {

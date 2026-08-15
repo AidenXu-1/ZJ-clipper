@@ -1,4 +1,4 @@
-// 兆基clipper —— 小红书图文笔记专用提取器
+// Nomo Clipper —— 小红书图文笔记专用提取器
 //  笔记开在浮层 modal 里（盖在信息流上），Defuddle/findScroller 会抓到背后的信息流+AI面板，
 //  故直接读笔记 modal 的 DOM（标题/图集/正文/作者），绕开 Defuddle。
 //  小红书无 window.__INITIAL_STATE__，全部走 DOM。反爬不构成障碍（读已渲染 DOM，不打签名 API）。

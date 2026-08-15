@@ -53,7 +53,7 @@ Nomo Clipper 的防丢失与视频学习增强版本。
 
 - 新安装不再预设 `woshipm.com` → `PM` 网站标签规则，仓库、标签规则和各类凭证均由用户自行配置。
 - Chrome / Edge Release 附件继续只包含浏览器扩展运行文件，不包含源码、开发文档、缓存或本机配置。
-- 固定最新版文件名 `zhaoji-clipper-chrome.zip`、`zhaoji-clipper-edge.zip` 与带版本号归档包同时发布。
+- 固定最新版文件名 `nomo-clipper-chrome.zip`、`nomo-clipper-edge.zip` 与带版本号归档包同时发布。
 
 ### 仓库与接力开发
 
@@ -128,7 +128,7 @@ Nomo Clipper 的防丢失与视频学习增强版本。
 
 ## v2.0.0 - 2026-06-15
 
-兆基clipper 2.0 重点优化飞书文档与 X / Twitter 长文章的剪存质量。
+Nomo Clipper 2.0 重点优化飞书文档与 X / Twitter 长文章的剪存质量。
 
 ### 飞书文档
 
@@ -149,7 +149,7 @@ Nomo Clipper 的防丢失与视频学习增强版本。
 
 ## v1.0.0 - 2026-06-07
 
-兆基clipper 第一个成品版本。
+Nomo Clipper 第一个成品版本。
 
 > 历史说明：GitHub Release 与 Tag 使用 `v1.0.0`，当时安装包内部版本号为 `0.1.0`。
 

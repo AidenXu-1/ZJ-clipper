@@ -1,4 +1,4 @@
-// 兆基clipper —— 后台 service worker：右键菜单 + 打开 obsidian:// URI
+// Nomo Clipper —— 后台 service worker：右键菜单 + 打开 obsidian:// URI
 import {
   DouyinTranscribeRequest,
   DouyinTranscribeResponse,
@@ -8,8 +8,8 @@ import {
 import { sendToTab } from '@/utils/messaging';
 import { isAuthGatedHost } from '@/utils/hosts';
 
-const MENU_ID = 'zhaoji-clipper-clip';
-const MENU_HL = 'zhaoji-clipper-highlight';
+const MENU_ID = 'nomo-clipper-clip';
+const MENU_HL = 'nomo-clipper-highlight';
 const NATIVE_HOST = 'com.nomo.clipper.transcriber';
 
 /** 通知当前激活标签页的内容脚本高亮选区（内容脚本不在时自动注入） */

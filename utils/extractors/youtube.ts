@@ -1,4 +1,4 @@
-// 兆基clipper —— YouTube 观看页提取器
+// Nomo Clipper —— YouTube 观看页提取器
 //  正文（可播放嵌入 + 字幕 transcript）仍走 Defuddle 的 YouTube 异步 extractor（parseAsync），
 //  本适配器在其基础上「额外」从已渲染 DOM 补抓互动数据：观看数/点赞数/发布日期/频道名。
 //  全部读 DOM 的文本与 aria-label（精确数藏在 aria-label，显示文本是缩写），零签名、零风控。

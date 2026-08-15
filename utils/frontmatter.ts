@@ -1,4 +1,4 @@
-// 兆基clipper —— 由属性生成 YAML frontmatter
+// Nomo Clipper —— 由属性生成 YAML frontmatter
 import { ClipProperties, ClipStats, Settings } from './types';
 
 // 互动数据：内部英文字段 → frontmatter 中文键（跨平台归一，便于阅读+按数值排序）

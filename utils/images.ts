@@ -1,4 +1,4 @@
-// 兆基clipper —— 本地图片保存：解析正文图片 → 后台下载 → 存入仓库附件 → 改写为 ![[名]]
+// Nomo Clipper —— 本地图片保存：解析正文图片 → 后台下载 → 存入仓库附件 → 改写为 ![[名]]
 import { FetchImageResponse } from './types';
 import { RestConfig, putBinary } from './rest';
 import { safeName } from './filename';

@@ -1,4 +1,4 @@
-// 兆基clipper —— 向标签页发消息；若内容脚本不在（页面早于插件加载/插件更新过），
+// Nomo Clipper —— 向标签页发消息；若内容脚本不在（页面早于插件加载/插件更新过），
 // 按需用 chrome.scripting 注入后重试，避免“必须手动重载插件才能用”的问题。
 
 export async function sendToTab<T = any>(tabId: number, msg: unknown): Promise<T> {

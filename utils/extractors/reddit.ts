@@ -1,4 +1,4 @@
-// 兆基clipper —— Reddit 帖子提取器
+// Nomo Clipper —— Reddit 帖子提取器
 //  新版 Reddit 用 Web Components：<shreddit-post> 把标题/作者/分数/类型等放在元素属性上，
 //  正文在 [slot="text-body"] 光 DOM 里。直接读属性+正文容器，绕开 Defuddle(它会把评论树当正文)。
 //  只抓「帖子本体」(标题+正文+媒体+互动)，不抓评论——评论是噪声，语义活交下游 agent。

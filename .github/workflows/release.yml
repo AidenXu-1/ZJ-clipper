@@ -56,10 +56,10 @@ jobs:
       - name: Create stable latest aliases
         shell: bash
         run: |
-          cp ".output/zhaoji-clipper-${GITHUB_REF_NAME#v}-chrome.zip" \
-            ".output/zhaoji-clipper-chrome.zip"
-          cp ".output/zhaoji-clipper-${GITHUB_REF_NAME#v}-edge.zip" \
-            ".output/zhaoji-clipper-edge.zip"
+          cp ".output/nomo-clipper-${GITHUB_REF_NAME#v}-chrome.zip" \
+            ".output/nomo-clipper-chrome.zip"
+          cp ".output/nomo-clipper-${GITHUB_REF_NAME#v}-edge.zip" \
+            ".output/nomo-clipper-edge.zip"
 
       - name: Create GitHub Release
         env:
@@ -68,10 +68,10 @@ jobs:
         run: |
           NOTES_FILE="RELEASE_NOTES_${GITHUB_REF_NAME}.md"
           ASSETS=(
-            ".output/zhaoji-clipper-${GITHUB_REF_NAME#v}-chrome.zip"
-            ".output/zhaoji-clipper-${GITHUB_REF_NAME#v}-edge.zip"
-            ".output/zhaoji-clipper-chrome.zip"
-            ".output/zhaoji-clipper-edge.zip"
+            ".output/nomo-clipper-${GITHUB_REF_NAME#v}-chrome.zip"
+            ".output/nomo-clipper-${GITHUB_REF_NAME#v}-edge.zip"
+            ".output/nomo-clipper-chrome.zip"
+            ".output/nomo-clipper-edge.zip"
           )
 
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
@@ -79,10 +79,10 @@ jobs:
             exit 1
           elif [[ -f "$NOTES_FILE" ]]; then
             gh release create "$GITHUB_REF_NAME" "${ASSETS[@]}" \
-              --title "兆基clipper ${GITHUB_REF_NAME#v}" \
+              --title "Nomo Clipper ${GITHUB_REF_NAME#v}" \
               --notes-file "$NOTES_FILE"
           else
             gh release create "$GITHUB_REF_NAME" "${ASSETS[@]}" \
-              --title "兆基clipper ${GITHUB_REF_NAME#v}" \
+              --title "Nomo Clipper ${GITHUB_REF_NAME#v}" \
               --generate-notes
           fi

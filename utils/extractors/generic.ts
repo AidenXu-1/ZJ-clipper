@@ -1,4 +1,4 @@
-// 兆基clipper —— 通用提取器：Defuddle 自动定位正文 → Turndown 转 Markdown。
+// Nomo Clipper —— 通用提取器：Defuddle 自动定位正文 → Turndown 转 Markdown。
 //  作为注册表的最后兜底，match 永远 true。YouTube 等站点经 Defuddle 的异步 extractor 在此路径生效。
 import { ExtractedPage } from '@/utils/types';
 import {

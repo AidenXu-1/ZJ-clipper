@@ -2,7 +2,7 @@
 
 ## Supported version
 
-Security fixes are applied to the latest release of 兆基clipper. Older releases remain available for reproducibility, but users should upgrade to the latest version.
+Security fixes are applied to the latest release of Nomo Clipper. Older releases remain available for reproducibility, but users should upgrade to the latest version.
 
 ## Reporting a vulnerability
 

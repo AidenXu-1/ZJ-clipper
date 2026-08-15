@@ -1,4 +1,4 @@
-// 兆基clipper —— 微信公众号文章专用提取器
+// Nomo Clipper —— 微信公众号文章专用提取器
 //  公众号正文容器是稳定的 #js_content，但 Defuddle 认不出它（回退选中整个 body），
 //  激进清洗时会把正文里的图片丢掉大半（实测 19 张只剩 1 张）。
 //  故直接读 #js_content 的 DOM 转 Markdown，绕开 Defuddle，图片一张不丢。

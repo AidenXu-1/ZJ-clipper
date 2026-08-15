@@ -1,4 +1,4 @@
-// 兆基clipper —— 中文文案集中存放，便于未来 i18n
+// Nomo Clipper —— 中文文案集中存放，便于未来 i18n
 
 export const T = {
   // popup

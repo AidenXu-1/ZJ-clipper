@@ -1,16 +1,16 @@
-# 兆基clipper
+# Nomo Clipper
 
 <p align="center">
-  <img src="./public/icon/128.png" width="96" alt="兆基clipper 图标" />
+  <img src="./public/icon/128.png" width="96" alt="Nomo Clipper 图标" />
 </p>
 
 <p align="center">
-  <a href="https://github.com/AidenXu-1/ZJ-clipper/releases/latest"><img src="https://img.shields.io/github/v/release/AidenXu-1/ZJ-clipper?label=latest" alt="Latest Release" /></a>
-  <a href="https://github.com/AidenXu-1/ZJ-clipper/actions/workflows/ci.yml"><img src="https://github.com/AidenXu-1/ZJ-clipper/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+  <a href="https://github.com/lihua2003419-cmyk/Nomo-clipper/releases/latest"><img src="https://img.shields.io/github/v/release/lihua2003419-cmyk/Nomo-clipper?label=latest" alt="Latest Release" /></a>
+  <a href="https://github.com/lihua2003419-cmyk/Nomo-clipper/actions/workflows/ci.yml"><img src="https://github.com/lihua2003419-cmyk/Nomo-clipper/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
   <a href="./LICENSE"><img src="https://img.shields.io/badge/license-personal%20use-orange" alt="Personal Use License" /></a>
 </p>
 
-兆基clipper 是一款面向中文知识工作流的 Chrome / Edge 浏览器扩展，用来把网页内容精准剪藏成 Markdown，并保存到你的 **Obsidian 仓库**。
+Nomo Clipper 是一款面向中文知识工作流的 Chrome / Edge 浏览器扩展，用来把网页内容精准剪藏成 Markdown，并保存到你的 **Obsidian 仓库**。
 
 它对标 Obsidian 官方 Web Clipper，但更偏向中文内容平台、多站点精准适配、本地图片落地和个人知识库归档。
 
@@ -49,10 +49,10 @@
 
 ### 普通用户：下载成品包
 
-到 [最新 Release](https://github.com/AidenXu-1/ZJ-clipper/releases/latest) 下载对应浏览器的 zip：
+到 [最新 Release](https://github.com/lihua2003419-cmyk/Nomo-clipper/releases/latest) 下载对应浏览器的 zip：
 
-- Chrome：[直接下载最新版](https://github.com/AidenXu-1/ZJ-clipper/releases/latest/download/zhaoji-clipper-chrome.zip)
-- Edge：[直接下载最新版](https://github.com/AidenXu-1/ZJ-clipper/releases/latest/download/zhaoji-clipper-edge.zip)
+- Chrome：[直接下载最新版](https://github.com/lihua2003419-cmyk/Nomo-clipper/releases/latest/download/nomo-clipper-chrome.zip)
+- Edge：[直接下载最新版](https://github.com/lihua2003419-cmyk/Nomo-clipper/releases/latest/download/nomo-clipper-edge.zip)
 
 这两个最新版直链的文件名保持固定；每次发布新 Release 后会自动指向新的安装包。带版本号的附件继续保留，用于历史归档和复现。
 
@@ -82,7 +82,7 @@ Chrome 用户复制：
 
 ```text
 请帮我安装这个浏览器插件：
-https://github.com/AidenXu-1/ZJ-clipper
+https://github.com/lihua2003419-cmyk/Nomo-clipper
 
 我是 Chrome 用户。请下载最新 Release 里的 chrome.zip，解压后告诉我在 chrome://extensions 里应该选择哪个文件夹加载。
 ```
@@ -91,7 +91,7 @@ Edge 用户复制：
 
 ```text
 请帮我安装这个浏览器插件：
-https://github.com/AidenXu-1/ZJ-clipper
+https://github.com/lihua2003419-cmyk/Nomo-clipper
 
 我是 Edge 用户。请下载最新 Release 里的 edge.zip，解压后告诉我在 edge://extensions 里应该选择哪个文件夹加载。
 ```
@@ -100,14 +100,14 @@ Chrome 和 Edge 都要的用户复制：
 
 ```text
 请帮我安装这个浏览器插件：
-https://github.com/AidenXu-1/ZJ-clipper
+https://github.com/lihua2003419-cmyk/Nomo-clipper
 
 我同时使用 Chrome 和 Edge。请下载最新 Release 里的 chrome.zip 和 edge.zip，分别解压；然后告诉我在 chrome://extensions 里应该选择哪个 Chrome 文件夹、在 edge://extensions 里应该选择哪个 Edge 文件夹加载。
 ```
 
 推荐顺序：
 
-1. 优先下载最新版成品包：`zhaoji-clipper-chrome.zip` 或 `zhaoji-clipper-edge.zip`。
+1. 优先下载最新版成品包：`nomo-clipper-chrome.zip` 或 `nomo-clipper-edge.zip`。
 2. 解压 zip。
 3. 指引用户在浏览器扩展管理页加载解压后的文件夹。
 4. 只有在无法下载 Release 附件、或需要二次开发时，才从源码构建。
@@ -184,7 +184,7 @@ python3 -c "d=open('.output/chrome-mv3/content-scripts/content.js','rb').read();
    - `obsidian://`（零配置）：填 **Obsidian 仓库名**即可；
    - **Local REST API**（推荐，超长不截断、可存本地图片）：在 Obsidian 装「Local REST API」插件、开 HTTP 服务、把 API Key 填进来。
    - **飞书知识库**：在飞书开放平台建「自建应用」，开通 `offline_access`、`drive:file:upload`、`drive:drive`、`docs:document:import`、`wiki:wiki` 权限，配置重定向 URL 后登录授权，选好目标知识库节点。插件会以用户本人身份保存，用户本人能访问/写入的知识库即可。多套保存目标可在弹窗顶部「保存到」一键切换。
-2. 在任意文章页点扩展图标（或快捷键 `Ctrl/Cmd+Shift+S`，或右键「用兆基clipper剪藏此页」）。
+2. 在任意文章页点扩展图标（或快捷键 `Ctrl/Cmd+Shift+S`，或右键「用Nomo Clipper剪藏此页」）。
 3. 弹窗中预览/编辑标题、正文、属性（标签为 chip 编辑器）、保存位置，点「保存到 Obsidian」，存完可一键「在 Obsidian 打开」。
 4. 选中部分文字后再剪藏，会默认只存选中内容（可切整页）。
 5. 长文 / 整串 thread → 点「📜 完整抓取全文」。
@@ -193,7 +193,7 @@ python3 -c "d=open('.output/chrome-mv3/content-scripts/content.js','rb').read();
 
 ## 隐私
 
-兆基clipper 默认不提供云端服务、不采集用户剪藏内容，也不向第三方上传网页正文、图片、标签或 Obsidian 配置。Local REST API Key 与飞书应用凭证（App Secret / OAuth token）单独保存在当前设备的 `chrome.storage.local`，不会写入 GitHub，也不会通过 `chrome.storage.sync` 随浏览器账号同步。
+Nomo Clipper 默认不提供云端服务、不采集用户剪藏内容，也不向第三方上传网页正文、图片、标签或 Obsidian 配置。Local REST API Key 与飞书应用凭证（App Secret / OAuth token）单独保存在当前设备的 `chrome.storage.local`，不会写入 GitHub，也不会通过 `chrome.storage.sync` 随浏览器账号同步。
 
 唯一的对外上传发生在用户**主动选择「飞书知识库」保存方式并配置自建应用后**：此时剪藏内容会上传到用户自己的飞书知识库（用用户自己的应用凭证，直连飞书开放平台，不经过任何第三方服务器）。不选飞书则不发生任何上传。
 

@@ -1,4 +1,4 @@
-// 兆基clipper —— 全局类型定义
+// Nomo Clipper —— 全局类型定义
 
 /** content script 提取并回传给 popup 的页面数据 */
 export interface ExtractedPage {

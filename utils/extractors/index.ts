@@ -1,4 +1,4 @@
-// 兆基clipper —— 站点适配器注册表：按顺序匹配，首个命中即由其提取；generic 永远兜底。
+// Nomo Clipper —— 站点适配器注册表：按顺序匹配，首个命中即由其提取；generic 永远兜底。
 //  加新平台 = 新增一个适配器文件 + 在 REGISTRY 里插一行，物理上碰不到其他平台。
 import { ExtractedPage } from '@/utils/types';
 import { ExtractContext, SiteExtractor } from '@/utils/extract-core';

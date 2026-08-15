@@ -1,4 +1,4 @@
-// 兆基clipper —— 内容脚本（壳层）：
+// Nomo Clipper —— 内容脚本（壳层）：
 //  · 注册消息监听（剪藏/高亮/诊断）
 //  · 抓取交给站点适配器注册表（utils/extractors）：对应平台用对应的活，互不串扰
 //  · 高亮器 UI（划词浮动按钮 + Option 点击移除）与诊断保留在此
@@ -108,7 +108,7 @@ function setupSelectionButton() {
   const btn = document.createElement('button');
   selectionButtonEl = btn;
   btn.textContent = '🖍 高亮';
-  btn.id = 'zhaoji-clipper-hl-btn';
+  btn.id = 'nomo-clipper-hl-btn';
   btn.style.cssText = [
     'position:absolute !important',
     'z-index:2147483647 !important',
@@ -184,7 +184,7 @@ async function initHighlightPreferences() {
 /** Option/Alt + 点击高亮标记 → 移除该条（避免阅读时误删） */
 function onHighlightClick(e: MouseEvent) {
   if (!e.altKey) return;
-  const mark = (e.target as HTMLElement)?.closest?.(`mark.zhaoji-clipper-hl`) as HTMLElement | null;
+  const mark = (e.target as HTMLElement)?.closest?.(`mark.nomo-clipper-hl`) as HTMLElement | null;
   if (!mark) return;
   const id = mark.dataset.jhl;
   if (!id) return;

@@ -1,4 +1,4 @@
-// 兆基clipper —— 文件名安全化 & 文件名模板渲染
+// Nomo Clipper —— 文件名安全化 & 文件名模板渲染
 
 /** 去除文件名中的非法字符（Obsidian / Windows / macOS 通用） */
 export function safeName(name: string): string {

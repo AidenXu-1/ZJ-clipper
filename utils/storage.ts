@@ -1,4 +1,4 @@
-// 兆基clipper —— 普通设置使用 sync；API Key 与仓库档（含密钥）单独留在当前设备的 local
+// Nomo Clipper —— 普通设置使用 sync；API Key 与仓库档（含密钥）单独留在当前设备的 local
 import { ClipDraft, Settings, DEFAULT_SETTINGS, SaveDestination, VaultProfile } from './types';
 
 const KEY = 'zhaoji_clipper_settings';

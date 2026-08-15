@@ -1,10 +1,10 @@
 # Development Guide
 
-这份文档给想继续开发兆基clipper的人和本地 Agent 使用。读完它，应该能快速理解项目边界、目录职责、常见坑和新增站点适配器的方法。
+这份文档给想继续开发Nomo Clipper的人和本地 Agent 使用。读完它，应该能快速理解项目边界、目录职责、常见坑和新增站点适配器的方法。
 
 ## 项目定位
 
-兆基clipper 是一个 Chrome / Edge MV3 浏览器扩展，把网页内容提取为 Markdown，并保存到用户自己的 Obsidian 仓库或飞书知识库。
+Nomo Clipper 是一个 Chrome / Edge MV3 浏览器扩展，把网页内容提取为 Markdown，并保存到用户自己的 Obsidian 仓库或飞书知识库。
 
 核心原则是 **capture-only**：
 
@@ -21,7 +21,7 @@
 如果你要让 Codex、Claude Code 或其它本地 Agent 继续开发，可以复制这段：
 
 ```text
-请先阅读 README.md 和 DEVELOPMENT.md，理解兆基clipper 的 capture-only 边界、WXT/React 架构、站点适配器注册表和构建检查要求。
+请先阅读 README.md 和 DEVELOPMENT.md，理解Nomo Clipper 的 capture-only 边界、WXT/React 架构、站点适配器注册表和构建检查要求。
 
 开发原则：
 - 不要加入 AI 摘要、云端上传或自动语义分类。
@@ -214,7 +214,7 @@ npm run build:edge
 ```bash
 git switch main
 git pull --ff-only
-git tag -a vX.Y.Z -m "兆基clipper X.Y.Z"
+git tag -a vX.Y.Z -m "Nomo Clipper X.Y.Z"
 git push origin vX.Y.Z
 ```
 
@@ -224,7 +224,7 @@ git push origin vX.Y.Z
 - 执行类型检查。
 - 构建 Chrome / Edge 安装包。
 - 创建 GitHub Release，或更新同标签 Release 的安装包。
-- 同时上传带版本号的历史归档和固定名称的最新版附件：`zhaoji-clipper-chrome.zip`、`zhaoji-clipper-edge.zip`。
+- 同时上传带版本号的历史归档和固定名称的最新版附件：`nomo-clipper-chrome.zip`、`nomo-clipper-edge.zip`。
 
 日常开发不要直接向 `main` 推送，也不需要维护长期 `develop` 分支。
 
@@ -353,10 +353,10 @@ npm run zip:edge
 
 把生成的 zip 上传到 GitHub Release：
 
-- `zhaoji-clipper-<version>-chrome.zip`
-- `zhaoji-clipper-<version>-edge.zip`
-- `zhaoji-clipper-chrome.zip`（最新版固定直链）
-- `zhaoji-clipper-edge.zip`（最新版固定直链）
+- `nomo-clipper-<version>-chrome.zip`
+- `nomo-clipper-<version>-edge.zip`
+- `nomo-clipper-chrome.zip`（最新版固定直链）
+- `nomo-clipper-edge.zip`（最新版固定直链）
 
 ## 当前开放方向
 

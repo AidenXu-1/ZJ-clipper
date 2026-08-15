@@ -1,4 +1,4 @@
-// 兆基clipper —— 抓取核心：站点适配器共享的工具与类型
+// Nomo Clipper —— 抓取核心：站点适配器共享的工具与类型
 //  · Turndown 服务 + 规则、HTML→Markdown
 //  · Defuddle 封装、Markdown 清洗、完整抓取（滚动累积）
 //  · __INITIAL_STATE__ 解析（B站/小红书等共用）

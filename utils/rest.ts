@@ -1,4 +1,4 @@
-// 兆基clipper —— 通过 Obsidian「Local REST API」插件直接写入仓库
+// Nomo Clipper —— 通过 Obsidian「Local REST API」插件直接写入仓库
 // 插件文档：https://github.com/coddingtonbear/obsidian-local-rest-api
 // 端点：PUT /vault/{path}  创建/覆盖文件；GET /  查询状态与鉴权
 

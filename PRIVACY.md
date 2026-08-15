@@ -1,6 +1,6 @@
 # Privacy Policy
 
-兆基clipper 是一个本地优先的浏览器扩展。它的目标是把用户当前浏览的网页内容转换为 Markdown，并保存到用户自己的 Obsidian 仓库。
+Nomo Clipper 是一个本地优先的浏览器扩展。它的目标是把用户当前浏览的网页内容转换为 Markdown，并保存到用户自己的 Obsidian 仓库。
 
 ## 数据处理原则
 

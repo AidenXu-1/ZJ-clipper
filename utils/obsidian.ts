@@ -1,4 +1,4 @@
-// 兆基clipper —— 构造 obsidian://new URI
+// Nomo Clipper —— 构造 obsidian://new URI
 // 文档：https://help.obsidian.md/Extending+Obsidian/Obsidian+URI
 
 export interface ObsidianTarget {

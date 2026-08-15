@@ -1,4 +1,4 @@
-// 兆基clipper —— 飞书/Lark 文档专用提取器
+// Nomo Clipper —— 飞书/Lark 文档专用提取器
 //  Defuddle 自动定位会选到 body（混入评论/点赞/导航），故强制指定正文容器并过滤噪声行。
 // 注：本模块会被打进 content.js，受 ASCII 约束 —— 中文只可出现在字符串/Set 中，禁止进正则字面量。
 import { CaptureVisibleTabResponse, ExtractedPage } from '@/utils/types';

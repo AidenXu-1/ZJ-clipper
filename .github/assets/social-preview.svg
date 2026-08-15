@@ -23,7 +23,7 @@
     <text x="174" y="230" fill="#f97316" text-anchor="middle" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, sans-serif" font-size="92" font-weight="800">兆</text>
   </g>
 
-  <text x="302" y="194" fill="#ffffff" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, sans-serif" font-size="72" font-weight="700">兆基clipper</text>
+  <text x="302" y="194" fill="#ffffff" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, sans-serif" font-size="72" font-weight="700">Nomo Clipper</text>
   <text x="304" y="254" fill="#cbd5e1" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, sans-serif" font-size="30">面向中文知识工作流的网页剪藏浏览器扩展</text>
 
   <g font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, sans-serif" font-size="24" font-weight="600">
@@ -42,5 +42,5 @@
 
   <line x1="92" y1="492" x2="1188" y2="492" stroke="#ffffff" stroke-opacity="0.14" />
   <text x="92" y="552" fill="#e2e8f0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, sans-serif" font-size="25">Chrome / Edge · 本地优先 · Capture-only</text>
-  <text x="1188" y="552" fill="#94a3b8" text-anchor="end" font-family="SFMono-Regular, Menlo, monospace" font-size="21">github.com/AidenXu-1/ZJ-clipper</text>
+  <text x="1188" y="552" fill="#94a3b8" text-anchor="end" font-family="SFMono-Regular, Menlo, monospace" font-size="21">github.com/lihua2003419-cmyk/Nomo-clipper</text>
 </svg>

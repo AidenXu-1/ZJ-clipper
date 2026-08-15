@@ -1,4 +1,4 @@
-// 兆基clipper —— 网页高亮：选区包裹 <mark>、文本引用锚定、按 URL 持久化与恢复
+// Nomo Clipper —— 网页高亮：选区包裹 <mark>、文本引用锚定、按 URL 持久化与恢复
 // 仅在内容脚本中使用（依赖 DOM 与 chrome.storage.local）
 
 export interface Highlight {
@@ -10,7 +10,7 @@ export interface Highlight {
 }
 
 const CONTEXT_LEN = 30;
-const HL_CLASS = 'zhaoji-clipper-hl';
+const HL_CLASS = 'nomo-clipper-hl';
 
 // ---------- 存储（按页面 URL，忽略 hash）----------
 
@@ -215,9 +215,9 @@ export function reapplyHighlight(hl: Highlight): boolean {
 
 /** 注入高亮样式（每页一次） */
 export function ensureHighlightStyle(): void {
-  if (document.getElementById('zhaoji-clipper-hl-style')) return;
+  if (document.getElementById('nomo-clipper-hl-style')) return;
   const style = document.createElement('style');
-  style.id = 'zhaoji-clipper-hl-style';
+  style.id = 'nomo-clipper-hl-style';
   style.textContent = `mark.${HL_CLASS}{background:#fff3a3;color:inherit;border-radius:2px;cursor:pointer;padding:0 1px;box-shadow:inset 0 -2px 0 #f4d03f;}`;
   (document.head || document.documentElement).appendChild(style);
 }
