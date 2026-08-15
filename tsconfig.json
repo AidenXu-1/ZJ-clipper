@@ -1,3 +1,4 @@
+// Nomo Clipper TypeScript configuration.
 {
   "extends": "./.wxt/tsconfig.json",
   "compilerOptions": {

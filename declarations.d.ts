@@ -1,4 +1,4 @@
-// 第三方包缺失的类型声明
+// Nomo Clipper：补充第三方包缺失的类型声明。
 declare module 'turndown-plugin-gfm' {
   import type TurndownService from 'turndown';
   export const gfm: TurndownService.Plugin;
